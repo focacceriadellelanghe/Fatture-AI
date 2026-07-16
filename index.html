@@ -4,29 +4,217 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <meta name="theme-color" content="#111111" />
-  <title>Food Cost Intelligence — POC</title>
+  <title>Food Cost Intelligence — Caricamento fattura</title>
   <style>
-    :root {--bg:#0f0f10;--card:#18181b;--border:#2a2a2f;--text:#f5f5f5;--muted:#a1a1aa;--gold:#dfa145;--success:#22c55e;--error:#ef4444;--warning:#f59e0b}
-    *{box-sizing:border-box}body{margin:0;min-height:100vh;font-family:Arial,Helvetica,sans-serif;background:var(--bg);color:var(--text);display:flex;justify-content:center;align-items:center;padding:20px}.app{width:100%;max-width:520px}.brand{margin-bottom:22px}.eyebrow{color:var(--gold);font-size:.78rem;font-weight:700;letter-spacing:.11em;text-transform:uppercase}h1{margin:8px 0 6px;font-size:clamp(2rem,8vw,3.3rem);line-height:.98}.subtitle{color:var(--muted);margin:0;line-height:1.5}.card{background:var(--card);border:1px solid var(--border);border-radius:18px;padding:20px}label{display:block;font-size:.86rem;font-weight:700;margin-bottom:8px}input{width:100%;border:1px solid var(--border);border-radius:12px;background:#111113;color:var(--text);padding:14px;font-size:1rem;outline:none}input:focus{border-color:var(--gold)}.field+.field{margin-top:16px}button{width:100%;margin-top:18px;border:0;border-radius:12px;padding:15px 16px;background:var(--gold);color:#161616;font-weight:800;font-size:1rem;cursor:pointer}button:disabled{opacity:.55;cursor:wait}.status{display:none;margin-top:16px;border-radius:12px;padding:14px;font-size:.92rem;line-height:1.45;overflow-wrap:anywhere}.status.show{display:block}.status.loading{background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.35);color:#fbbf24}.status.success{background:rgba(34,197,94,.12);border:1px solid rgba(34,197,94,.35);color:#86efac}.status.error{background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.35);color:#fca5a5}.technical{margin-top:18px;color:var(--muted);font-size:.8rem;line-height:1.5}code{color:#f3c885}
+    :root{
+      --bg:#0f0f10;--card:#18181b;--border:#2a2a2f;--text:#f5f5f5;
+      --muted:#a1a1aa;--gold:#dfa145;--success:#22c55e;--error:#ef4444;--warning:#f59e0b
+    }
+    *{box-sizing:border-box}
+    body{margin:0;min-height:100vh;font-family:Arial,Helvetica,sans-serif;background:var(--bg);color:var(--text);padding:20px}
+    .app{width:100%;max-width:620px;margin:0 auto}
+    .eyebrow{color:var(--gold);font-size:.78rem;font-weight:700;letter-spacing:.11em;text-transform:uppercase}
+    h1{margin:8px 0 6px;font-size:clamp(2rem,8vw,3.2rem);line-height:1}
+    .subtitle{margin:0 0 22px;color:var(--muted);line-height:1.5}
+    .card{background:var(--card);border:1px solid var(--border);border-radius:18px;padding:20px}
+    .field+.field{margin-top:16px}
+    label{display:block;font-size:.86rem;font-weight:700;margin-bottom:8px}
+    input,select{width:100%;border:1px solid var(--border);border-radius:12px;background:#111113;color:var(--text);padding:14px;font-size:1rem;outline:none}
+    input:focus,select:focus{border-color:var(--gold)}
+    input[type="file"]{padding:12px}
+    .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+    button{width:100%;margin-top:18px;border:0;border-radius:12px;padding:15px 16px;background:var(--gold);color:#161616;font-weight:800;font-size:1rem;cursor:pointer}
+    button:disabled{opacity:.55;cursor:wait}
+    .status{display:none;margin-top:16px;border-radius:12px;padding:14px;font-size:.92rem;line-height:1.45;overflow-wrap:anywhere}
+    .status.show{display:block}
+    .status.loading{background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.35);color:#fbbf24}
+    .status.success{background:rgba(34,197,94,.12);border:1px solid rgba(34,197,94,.35);color:#86efac}
+    .status.error{background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.35);color:#fca5a5}
+    .note{margin-top:16px;color:var(--muted);font-size:.82rem;line-height:1.5}
+    a{color:#f3c885}
+    @media(max-width:560px){.grid{grid-template-columns:1fr}}
   </style>
 </head>
 <body>
   <main class="app">
-    <section class="brand">
-      <div class="eyebrow">Focacceria delle Langhe</div>
-      <h1>Food Cost Intelligence</h1>
-      <p class="subtitle">Proof of Concept per validare la comunicazione GitHub Pages → Apps Script → Google Sheets.</p>
-    </section>
+    <div class="eyebrow">Focacceria delle Langhe</div>
+    <h1>Nuova fattura</h1>
+    <p class="subtitle">Carica una foto o un PDF. Il documento verrà archiviato su Drive nella cartella annuale e registrato nel foglio FATTURE.</p>
+
     <section class="card">
-      <div class="field"><label for="endpoint">URL Web App Apps Script</label><input id="endpoint" type="url" placeholder="https://script.google.com/macros/s/.../exec" autocomplete="off" /></div>
-      <div class="field"><label for="message">Messaggio di test</label><input id="message" type="text" value="Test Food Cost Intelligence" maxlength="200" /></div>
-      <button id="sendButton" type="button">Invia test al database</button>
+      <div class="field">
+        <label for="endpoint">URL Web App Apps Script</label>
+        <input id="endpoint" type="url" placeholder="https://script.google.com/macros/s/.../exec" />
+      </div>
+
+      <div class="grid">
+        <div class="field">
+          <label for="invoiceDate">Data fattura</label>
+          <input id="invoiceDate" type="date" />
+        </div>
+        <div class="field">
+          <label for="invoiceNumber">Numero fattura</label>
+          <input id="invoiceNumber" type="text" maxlength="80" placeholder="Es. 1234/2026" />
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="supplier">Fornitore</label>
+        <input id="supplier" type="text" maxlength="120" placeholder="Es. Versounico" />
+      </div>
+
+      <div class="grid">
+        <div class="field">
+          <label for="total">Totale fattura (€)</label>
+          <input id="total" type="number" min="0" step="0.01" inputmode="decimal" placeholder="0,00" />
+        </div>
+        <div class="field">
+          <label for="paperAvailable">Cartaceo disponibile</label>
+          <select id="paperAvailable">
+            <option value="SI" selected>Sì</option>
+            <option value="NO">No</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="invoiceFile">Foto o PDF fattura</label>
+        <input id="invoiceFile" type="file" accept="image/*,application/pdf" capture="environment" />
+      </div>
+
+      <button id="uploadButton" type="button">Carica e registra fattura</button>
       <div id="status" class="status" role="status" aria-live="polite"></div>
-      <div class="technical">Il test è superato solo se compare <strong>Operazione completata</strong> e nel foglio Google viene aggiunta una nuova riga.</div>
+
+      <div class="note">
+        Limite tecnico V2: massimo 8 MB per file. Nessun OCR viene eseguito in questa fase.
+      </div>
     </section>
   </main>
+
   <script>
-    const endpointInput=document.getElementById('endpoint');const messageInput=document.getElementById('message');const sendButton=document.getElementById('sendButton');const statusBox=document.getElementById('status');const savedEndpoint=localStorage.getItem('fci_apps_script_endpoint');if(savedEndpoint){endpointInput.value=savedEndpoint}function setStatus(type,message){statusBox.className=`status show ${type}`;statusBox.textContent=message}sendButton.addEventListener('click',async()=>{const endpoint=endpointInput.value.trim();const message=messageInput.value.trim();if(!endpoint){setStatus('error',"Inserisci l'URL del Web App Apps Script.");return}if(!message){setStatus('error','Inserisci un messaggio di test.');return}localStorage.setItem('fci_apps_script_endpoint',endpoint);sendButton.disabled=true;setStatus('loading','Invio in corso...');try{const payload={action:'connection_test',message,source:'github_pages',clientTimestamp:new Date().toISOString()};const response=await fetch(endpoint,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(payload)});const rawText=await response.text();let data;try{data=JSON.parse(rawText)}catch{throw new Error(`Risposta non valida dal backend: ${rawText.slice(0,200)}`)}if(!response.ok||data.success!==true){throw new Error(data.error||`Errore HTTP ${response.status}`)}setStatus('success',`Operazione completata. Riga ${data.rowNumber||'-'} scritta alle ${data.serverTimestamp||'data non disponibile'}.`)}catch(error){console.error(error);setStatus('error',`Operazione fallita: ${error.message}`)}finally{sendButton.disabled=false}});
+    const $ = (id) => document.getElementById(id);
+    const endpointInput = $("endpoint");
+    const uploadButton = $("uploadButton");
+    const statusBox = $("status");
+
+    endpointInput.value = localStorage.getItem("fci_apps_script_endpoint") || "";
+    $("invoiceDate").value = new Date().toISOString().slice(0,10);
+
+    function setStatus(type, message, link) {
+      statusBox.className = `status show ${type}`;
+      statusBox.innerHTML = "";
+      const text = document.createElement("div");
+      text.textContent = message;
+      statusBox.appendChild(text);
+
+      if (link) {
+        const anchor = document.createElement("a");
+        anchor.href = link;
+        anchor.target = "_blank";
+        anchor.rel = "noopener noreferrer";
+        anchor.textContent = "Apri documento su Drive";
+        anchor.style.display = "inline-block";
+        anchor.style.marginTop = "8px";
+        statusBox.appendChild(anchor);
+      }
+    }
+
+    function readFileAsBase64(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const result = String(reader.result || "");
+          const commaIndex = result.indexOf(",");
+          if (commaIndex === -1) {
+            reject(new Error("Formato file non leggibile"));
+            return;
+          }
+          resolve(result.slice(commaIndex + 1));
+        };
+        reader.onerror = () => reject(new Error("Errore durante la lettura del file"));
+        reader.readAsDataURL(file);
+      });
+    }
+
+    uploadButton.addEventListener("click", async () => {
+      const endpoint = endpointInput.value.trim();
+      const invoiceDate = $("invoiceDate").value;
+      const invoiceNumber = $("invoiceNumber").value.trim();
+      const supplier = $("supplier").value.trim();
+      const total = $("total").value.trim();
+      const paperAvailable = $("paperAvailable").value;
+      const file = $("invoiceFile").files[0];
+
+      if (!endpoint) return setStatus("error", "Inserisci l'URL Apps Script.");
+      if (!invoiceDate) return setStatus("error", "Inserisci la data fattura.");
+      if (!invoiceNumber) return setStatus("error", "Inserisci il numero fattura.");
+      if (!supplier) return setStatus("error", "Inserisci il fornitore.");
+      if (!file) return setStatus("error", "Seleziona una foto o un PDF.");
+
+      const allowedTypes = ["application/pdf", "image/jpeg", "image/png", "image/webp", "image/heic", "image/heif"];
+      if (file.type && !allowedTypes.includes(file.type)) {
+        return setStatus("error", "Formato non supportato. Usa PDF, JPG, PNG, WEBP o HEIC.");
+      }
+
+      if (file.size > 8 * 1024 * 1024) {
+        return setStatus("error", "Il file supera il limite di 8 MB.");
+      }
+
+      localStorage.setItem("fci_apps_script_endpoint", endpoint);
+      uploadButton.disabled = true;
+      setStatus("loading", "Caricamento in corso...");
+
+      try {
+        const fileBase64 = await readFileAsBase64(file);
+
+        const payload = {
+          action: "upload_invoice",
+          invoiceDate,
+          invoiceNumber,
+          supplier,
+          total: total || "",
+          paperAvailable,
+          originalFileName: file.name,
+          mimeType: file.type || "application/octet-stream",
+          fileBase64,
+          clientTimestamp: new Date().toISOString()
+        };
+
+        const response = await fetch(endpoint, {
+          method: "POST",
+          headers: {"Content-Type": "text/plain;charset=utf-8"},
+          body: JSON.stringify(payload)
+        });
+
+        const rawText = await response.text();
+        let data;
+        try {
+          data = JSON.parse(rawText);
+        } catch {
+          throw new Error(`Risposta backend non valida: ${rawText.slice(0,200)}`);
+        }
+
+        if (!response.ok || data.success !== true) {
+          throw new Error(data.error || `Errore HTTP ${response.status}`);
+        }
+
+        setStatus(
+          "success",
+          `Operazione completata. ID fattura: ${data.invoiceId}. Riga foglio: ${data.rowNumber}.`,
+          data.driveUrl
+        );
+
+        $("invoiceNumber").value = "";
+        $("supplier").value = "";
+        $("total").value = "";
+        $("invoiceFile").value = "";
+      } catch (error) {
+        console.error(error);
+        setStatus("error", `Operazione fallita: ${error.message}`);
+      } finally {
+        uploadButton.disabled = false;
+      }
+    });
   </script>
 </body>
 </html>

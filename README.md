@@ -1,30 +1,22 @@
-# Fatture-AI — Food Cost Intelligence POC
+# Fatture-AI — V2 caricamento documenti
 
-Proof of Concept per validare questa architettura:
+Secondo livello del Proof of Concept di Food Cost Intelligence.
 
-```text
-GitHub Pages
-    ↓
-Google Apps Script
-    ↓
-Google Sheets
-```
+## Funzioni incluse
 
-## Obiettivo del test
+- caricamento foto o PDF;
+- archiviazione automatica su Google Drive;
+- cartelle annuali;
+- registrazione nel foglio `FATTURE`;
+- salvataggio di data, fornitore, numero fattura e disponibilità del cartaceo;
+- link diretto al documento Drive.
 
-Il test è superato solo quando:
+## Funzioni non incluse
 
-1. la pagina GitHub Pages invia una richiesta;
-2. Apps Script riceve il payload;
-3. Apps Script scrive una nuova riga nel foglio `API_TEST`;
-4. il frontend mostra `Operazione completata`.
+- OCR;
+- riconoscimento prodotti;
+- aggiornamento prezzi;
+- dashboard;
+- alert.
 
-## File
-
-- `index.html`: frontend mobile pubblicato su GitHub Pages.
-- `Code.gs`: backend da copiare in Google Apps Script.
-- `ISTRUZIONI.md`: procedura operativa completa.
-
-## Vincolo
-
-Non sviluppare OCR, fotocamera, dashboard o altre funzioni finché questo test non funziona in modo affidabile.
+La V2 deve essere collaudata prima di procedere.
