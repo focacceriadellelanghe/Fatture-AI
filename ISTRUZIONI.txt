@@ -1,0 +1,4 @@
+1. Sostituire tutto il codice Apps Script con Code.gs.
+2. Eseguire autorizzaServiziV3 e concedere i permessi.
+3. Aggiornare il deployment esistente creando una nuova versione.
+4. Sostituire index.html nel repository GitHub.
