@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#111111" />
+  <title>Food Cost Intelligence — POC</title>
+  <style>
+    :root {--bg:#0f0f10;--card:#18181b;--border:#2a2a2f;--text:#f5f5f5;--muted:#a1a1aa;--gold:#dfa145;--success:#22c55e;--error:#ef4444;--warning:#f59e0b}
+    *{box-sizing:border-box}body{margin:0;min-height:100vh;font-family:Arial,Helvetica,sans-serif;background:var(--bg);color:var(--text);display:flex;justify-content:center;align-items:center;padding:20px}.app{width:100%;max-width:520px}.brand{margin-bottom:22px}.eyebrow{color:var(--gold);font-size:.78rem;font-weight:700;letter-spacing:.11em;text-transform:uppercase}h1{margin:8px 0 6px;font-size:clamp(2rem,8vw,3.3rem);line-height:.98}.subtitle{color:var(--muted);margin:0;line-height:1.5}.card{background:var(--card);border:1px solid var(--border);border-radius:18px;padding:20px}label{display:block;font-size:.86rem;font-weight:700;margin-bottom:8px}input{width:100%;border:1px solid var(--border);border-radius:12px;background:#111113;color:var(--text);padding:14px;font-size:1rem;outline:none}input:focus{border-color:var(--gold)}.field+.field{margin-top:16px}button{width:100%;margin-top:18px;border:0;border-radius:12px;padding:15px 16px;background:var(--gold);color:#161616;font-weight:800;font-size:1rem;cursor:pointer}button:disabled{opacity:.55;cursor:wait}.status{display:none;margin-top:16px;border-radius:12px;padding:14px;font-size:.92rem;line-height:1.45;overflow-wrap:anywhere}.status.show{display:block}.status.loading{background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.35);color:#fbbf24}.status.success{background:rgba(34,197,94,.12);border:1px solid rgba(34,197,94,.35);color:#86efac}.status.error{background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.35);color:#fca5a5}.technical{margin-top:18px;color:var(--muted);font-size:.8rem;line-height:1.5}code{color:#f3c885}
+  </style>
+</head>
+<body>
+  <main class="app">
+    <section class="brand">
+      <div class="eyebrow">Focacceria delle Langhe</div>
+      <h1>Food Cost Intelligence</h1>
+      <p class="subtitle">Proof of Concept per validare la comunicazione GitHub Pages → Apps Script → Google Sheets.</p>
+    </section>
+    <section class="card">
+      <div class="field"><label for="endpoint">URL Web App Apps Script</label><input id="endpoint" type="url" placeholder="https://script.google.com/macros/s/.../exec" autocomplete="off" /></div>
+      <div class="field"><label for="message">Messaggio di test</label><input id="message" type="text" value="Test Food Cost Intelligence" maxlength="200" /></div>
+      <button id="sendButton" type="button">Invia test al database</button>
+      <div id="status" class="status" role="status" aria-live="polite"></div>
+      <div class="technical">Il test è superato solo se compare <strong>Operazione completata</strong> e nel foglio Google viene aggiunta una nuova riga.</div>
+    </section>
+  </main>
+  <script>
+    const endpointInput=document.getElementById('endpoint');const messageInput=document.getElementById('message');const sendButton=document.getElementById('sendButton');const statusBox=document.getElementById('status');const savedEndpoint=localStorage.getItem('fci_apps_script_endpoint');if(savedEndpoint){endpointInput.value=savedEndpoint}function setStatus(type,message){statusBox.className=`status show ${type}`;statusBox.textContent=message}sendButton.addEventListener('click',async()=>{const endpoint=endpointInput.value.trim();const message=messageInput.value.trim();if(!endpoint){setStatus('error',"Inserisci l'URL del Web App Apps Script.");return}if(!message){setStatus('error','Inserisci un messaggio di test.');return}localStorage.setItem('fci_apps_script_endpoint',endpoint);sendButton.disabled=true;setStatus('loading','Invio in corso...');try{const payload={action:'connection_test',message,source:'github_pages',clientTimestamp:new Date().toISOString()};const response=await fetch(endpoint,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(payload)});const rawText=await response.text();let data;try{data=JSON.parse(rawText)}catch{throw new Error(`Risposta non valida dal backend: ${rawText.slice(0,200)}`)}if(!response.ok||data.success!==true){throw new Error(data.error||`Errore HTTP ${response.status}`)}setStatus('success',`Operazione completata. Riga ${data.rowNumber||'-'} scritta alle ${data.serverTimestamp||'data non disponibile'}.`)}catch(error){console.error(error);setStatus('error',`Operazione fallita: ${error.message}`)}finally{sendButton.disabled=false}});
+  </script>
+</body>
+</html>
