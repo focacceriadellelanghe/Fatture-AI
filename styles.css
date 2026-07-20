@@ -29,3 +29,69 @@ main{max-width:760px;margin:0 auto;padding:16px 16px calc(100px + env(safe-area-
 .invoice-upload-card .upload-zone{min-height:130px}.invoice-upload-card .upload-zone strong{font-size:15px}.invoice-upload-card .upload-zone small{text-align:center}
 .batch-note{font-size:11px;color:var(--muted);line-height:1.4}.ocr-auto-note{font-size:11px;color:var(--gold);margin-top:4px}
 @media(max-width:430px){.invoice-upload-card{padding:14px}.invoice-upload-card .form-grid{gap:10px}}
+
+/* V1.1.1 - Upload compatto iPhone 12 Pro */
+#view-upload .section-head{
+  margin-bottom:10px;
+}
+#view-upload .section-head p{
+  display:none;
+}
+#view-upload .stack{
+  gap:10px;
+}
+#view-upload .invoice-upload-card{
+  padding:12px;
+}
+#view-upload .invoice-upload-head{
+  margin-bottom:8px;
+}
+#view-upload .invoice-upload-card .upload-zone{
+  min-height:104px;
+  padding:14px 16px;
+}
+#view-upload .invoice-upload-card .upload-zone .upload-icon{
+  font-size:30px;
+}
+#view-upload .invoice-upload-card .upload-zone strong{
+  font-size:15px;
+}
+#view-upload .invoice-upload-card .upload-zone small{
+  font-size:11px;
+  line-height:1.3;
+}
+#view-upload .invoice-upload-card .form-grid{
+  margin-top:10px !important;
+  gap:8px;
+}
+#view-upload .form-grid label{
+  gap:5px;
+}
+#view-upload .form-grid input{
+  height:48px;
+  min-height:48px;
+  padding:10px 12px;
+}
+#view-upload .form-grid input[type="date"]{
+  height:48px;
+  min-height:48px;
+  line-height:normal;
+}
+#view-upload .ocr-auto-note{
+  margin-top:2px;
+  line-height:1.3;
+}
+#view-upload #addInvoiceBtn,
+#view-upload button[type="submit"]{
+  min-height:48px;
+}
+
+@media(max-width:430px){
+  #view-upload .section-head h2{
+    font-size:22px;
+  }
+  #view-upload .invoice-upload-head h3{
+    font-size:16px;
+  }
+}
+
