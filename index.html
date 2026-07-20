@@ -39,21 +39,11 @@
     </section>
 
     <section id="view-upload" class="view">
-      <div class="section-head"><div><h2>Nuova fattura</h2><p>La foto viene compressa sul telefono prima dell'upload.</p></div></div>
-      <form id="uploadForm" class="panel stack">
-        <label class="upload-zone">
-          <input id="fileInput" type="file" accept="image/*,application/pdf" capture="environment" required>
-          <span class="upload-icon">⌁</span>
-          <strong id="fileLabel">Scatta foto o seleziona PDF</strong>
-          <small>JPG, PNG, WEBP o PDF · massimo 12 MB</small>
-        </label>
-        <div class="form-grid">
-          <label><span>Data documento</span><input id="documentDate" type="date"></label>
-          <label><span>Fornitore <em>opzionale</em></span><input id="supplier" type="text" autocomplete="organization"></label>
-          <label><span>Numero documento <em>opzionale</em></span><input id="invoiceNumber" type="text"></label>
-          <label><span>Totale € <em>opzionale</em></span><input id="total" type="number" step="0.01" inputmode="decimal"></label>
-        </div>
-        <button class="btn primary wide" type="submit">Carica e analizza</button>
+      <div class="section-head"><div><h2>Carica fatture</h2><p>Ogni riquadro è una fattura. Puoi aggiungere più pagine alla stessa fattura e più fatture nello stesso invio.</p></div></div>
+      <form id="uploadForm" class="stack">
+        <div id="invoiceBatch" class="stack"></div>
+        <button id="addInvoiceBtn" class="btn secondary wide" type="button">＋ Aggiungi un'altra fattura</button>
+        <button class="btn primary wide" type="submit">Carica e analizza tutto</button>
       </form>
       <div id="uploadStatus" class="status-card hidden"></div>
     </section>

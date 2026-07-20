@@ -2,7 +2,7 @@
   'use strict';
 
   const cfg = window.FCI_CONFIG || {};
-  const state = { ingredients: [], currentInvoiceId: '', allPrices: [] };
+  const state = { ingredients: [], currentInvoiceId: '', allPrices: [], uploadGroups: [] };
   const $ = (id) => document.getElementById(id);
   const qsa = (sel) => Array.from(document.querySelectorAll(sel));
 
@@ -15,7 +15,7 @@
       navigate(btn.dataset.nav);
     }));
     $('homeBtn').addEventListener('click', () => navigate('home'));
-    $('fileInput').addEventListener('change', onFileSelected);
+    $('addInvoiceBtn').addEventListener('click', () => addUploadGroup());
     $('uploadForm').addEventListener('submit', submitUpload);
     $('refreshInvoicesBtn').addEventListener('click', loadInvoices);
     $('invoiceStatusFilter').addEventListener('change', loadInvoices);
@@ -23,7 +23,7 @@
     $('finalizeBtn').addEventListener('click', finalizeInvoice);
     $('priceSearch').addEventListener('input', renderPriceFilter);
     $('categoryFilter').addEventListener('change', renderPriceFilter);
-    $('documentDate').value = new Date().toISOString().slice(0, 10);
+    addUploadGroup();
   }
 
   async function navigate(view) {
@@ -49,35 +49,133 @@
     return json;
   }
 
-  function onFileSelected() {
-    const file = $('fileInput').files[0];
-    $('fileLabel').textContent = file ? file.name : 'Scatta foto o seleziona PDF';
+  function addUploadGroup() {
+    const id = 'up-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7);
+    state.uploadGroups.push({id, files: []});
+    renderUploadGroups();
+  }
+
+  function renderUploadGroups() {
+    const wrap = $('invoiceBatch');
+    wrap.innerHTML = state.uploadGroups.map((g, idx) => `
+      <article class="invoice-upload-card" data-upload-id="${esc(g.id)}">
+        <div class="invoice-upload-head">
+          <h3>Fattura ${idx + 1}</h3>
+          ${state.uploadGroups.length > 1 ? '<button class="remove-invoice-btn" type="button">Rimuovi</button>' : ''}
+        </div>
+        <label class="upload-zone">
+          <input class="group-file-input" type="file" accept="image/*,application/pdf" multiple>
+          <span class="upload-icon">⌁</span>
+          <strong>Aggiungi foto o PDF</strong>
+          <small>Più foto = pagine della stessa fattura. Un PDF può essere già multipagina.</small>
+        </label>
+        <div class="invoice-files">${g.files.map((f, i) => `<div class="invoice-file-row"><span>${esc(f.name)}</span><button type="button" data-remove-file="${i}" aria-label="Rimuovi">×</button></div>`).join('')}</div>
+        <div class="form-grid" style="margin-top:12px">
+          <label><span>Data documento <em>opzionale</em></span><input class="group-date" type="date" value="${esc(g.documentDate || '')}"></label>
+          <label><span>Fornitore <em>opzionale</em></span><input class="group-supplier" type="text" value="${esc(g.supplier || '')}" autocomplete="organization"></label>
+          <label><span>Numero documento <em>opzionale</em></span><input class="group-number" type="text" value="${esc(g.invoiceNumber || '')}"></label>
+          <label><span>Totale € <em>opzionale</em></span><input class="group-total" type="number" step="0.01" inputmode="decimal" value="${esc(g.total || '')}"></label>
+        </div>
+        <div class="ocr-auto-note">I campi vuoti vengono compilati dai dati letti da Gemini. I valori inseriti manualmente hanno priorità.</div>
+      </article>`).join('');
+
+    qsa('[data-upload-id]').forEach(card => {
+      const id = card.dataset.uploadId;
+      const group = state.uploadGroups.find(g => g.id === id);
+      card.querySelector('.group-file-input').addEventListener('change', e => {
+        const incoming = Array.from(e.target.files || []);
+        if (!incoming.length) return;
+        if (group.files.some(f => f.type === 'application/pdf') || incoming.some(f => f.type === 'application/pdf')) {
+          if (group.files.length + incoming.length > 1) {
+            toast('Un PDF deve essere l’unico file della fattura. Per una fattura multipagina in foto usa solo immagini.');
+            e.target.value = '';
+            return;
+          }
+        }
+        group.files.push(...incoming);
+        if (group.files.length > 10) {
+          group.files = group.files.slice(0, 10);
+          toast('Massimo 10 pagine per fattura');
+        }
+        captureGroupFields(card, group);
+        renderUploadGroups();
+      });
+      card.querySelectorAll('[data-remove-file]').forEach(btn => btn.addEventListener('click', () => {
+        captureGroupFields(card, group);
+        group.files.splice(Number(btn.dataset.removeFile), 1);
+        renderUploadGroups();
+      }));
+      const remove = card.querySelector('.remove-invoice-btn');
+      if (remove) remove.addEventListener('click', () => {
+        state.uploadGroups = state.uploadGroups.filter(g => g.id !== id);
+        renderUploadGroups();
+      });
+      ['.group-date','.group-supplier','.group-number','.group-total'].forEach(sel => {
+        card.querySelector(sel).addEventListener('input', () => captureGroupFields(card, group));
+      });
+    });
+  }
+
+  function captureGroupFields(card, group) {
+    group.documentDate = card.querySelector('.group-date').value;
+    group.supplier = card.querySelector('.group-supplier').value.trim();
+    group.invoiceNumber = card.querySelector('.group-number').value.trim();
+    group.total = card.querySelector('.group-total').value;
   }
 
   async function submitUpload(e) {
     e.preventDefault();
-    const original = $('fileInput').files[0];
-    if (!original) return toast('Seleziona una foto o un PDF');
-    setLoader(true, 'Preparazione file…');
+    qsa('[data-upload-id]').forEach(card => {
+      const g = state.uploadGroups.find(x => x.id === card.dataset.uploadId);
+      if (g) captureGroupFields(card, g);
+    });
+    const groups = state.uploadGroups.filter(g => g.files.length);
+    if (!groups.length) return toast('Aggiungi almeno una fattura');
+
+    $('uploadStatus').classList.add('hidden');
+    const results = [];
     try {
-      const file = original.type.startsWith('image/') ? await compressImage(original) : original;
-      if (file.size > 12 * 1024 * 1024) throw new Error('File oltre 12 MB. Riduci il PDF o usa una foto.');
-      setLoader(true, 'Caricamento e analisi Gemini…');
-      const base64Data = await fileToBase64(file);
-      const result = await api('upload_and_analyze', {
-        fileName: file.name,
-        mimeType: file.type || original.type,
-        base64Data,
-        documentDate: $('documentDate').value,
-        supplier: $('supplier').value.trim(),
-        invoiceNumber: $('invoiceNumber').value.trim(),
-        total: $('total').value
-      });
-      state.currentInvoiceId = result.invoiceId;
-      await ensureIngredients();
-      renderReview(result.review);
-      navigate('review');
-      toast('OCR completato. Controlla le righe.');
+      for (let gi = 0; gi < groups.length; gi++) {
+        const g = groups[gi];
+        setLoader(true, `Fattura ${gi + 1} di ${groups.length} · preparazione file…`);
+        const prepared = [];
+        let totalBytes = 0;
+        for (let fi = 0; fi < g.files.length; fi++) {
+          const original = g.files[fi];
+          const file = original.type.startsWith('image/') ? await compressImage(original) : original;
+          if (file.size > 12 * 1024 * 1024) throw new Error(`${file.name}: file oltre 12 MB`);
+          totalBytes += file.size;
+          if (totalBytes > 30 * 1024 * 1024) throw new Error(`Fattura ${gi + 1}: dimensione complessiva oltre 30 MB`);
+          prepared.push({
+            fileName: file.name,
+            mimeType: file.type || original.type,
+            base64Data: await fileToBase64(file)
+          });
+        }
+        setLoader(true, `Fattura ${gi + 1} di ${groups.length} · caricamento e analisi Gemini…`);
+        const result = await api('upload_group_and_analyze', {
+          files: prepared,
+          documentDate: g.documentDate || '',
+          supplier: g.supplier || '',
+          invoiceNumber: g.invoiceNumber || '',
+          total: g.total || ''
+        });
+        results.push(result);
+      }
+
+      if (results.length === 1) {
+        state.currentInvoiceId = results[0].invoiceId;
+        await ensureIngredients();
+        renderReview(results[0].review);
+        await navigate('review');
+        toast('OCR completato. Controlla le righe.');
+      } else {
+        $('invoiceStatusFilter').value = 'DA_REVISIONARE';
+        await navigate('invoices');
+        toast(`${results.length} fatture analizzate. Aprile una alla volta per la revisione.`);
+      }
+      state.uploadGroups = [];
+      addUploadGroup();
     } catch (err) {
       $('uploadStatus').classList.remove('hidden');
       $('uploadStatus').innerHTML = `<strong>Errore</strong><br><span class="muted">${esc(err.message)}</span>`;
