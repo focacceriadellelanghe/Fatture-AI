@@ -1,542 +1,98 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="it">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-  <meta name="theme-color" content="#0f0f10" />
-  <title>Fatture AI</title>
-  <style>
-    :root{
-      --bg:#0f0f10;--card:#18181b;--card2:#111113;--border:#2a2a2f;
-      --text:#f5f5f5;--muted:#a1a1aa;--gold:#dfa145;--gold2:#f3c885;
-      --success:#22c55e;--error:#ef4444;--warning:#f59e0b
-    }
-    *{box-sizing:border-box}
-    body{margin:0;min-height:100vh;font-family:Arial,Helvetica,sans-serif;background:var(--bg);color:var(--text);padding:18px}
-    .app{width:100%;max-width:760px;margin:0 auto}
-    .eyebrow{color:var(--gold);font-size:.76rem;font-weight:800;letter-spacing:.11em;text-transform:uppercase}
-    h1{margin:8px 0 6px;font-size:clamp(2rem,8vw,3.2rem);line-height:1}
-    .subtitle{margin:0 0 20px;color:var(--muted);line-height:1.5}
-    .toolbar{display:flex;gap:10px;margin-bottom:16px}
-    button{border:0;border-radius:12px;padding:14px 16px;font-weight:800;font-size:.95rem;cursor:pointer}
-    button:disabled{opacity:.55;cursor:wait}
-    .primary{background:var(--gold);color:#161616}
-    .secondary{background:#27272a;color:var(--text);border:1px solid var(--border)}
-    .danger{background:transparent;color:#fca5a5;border:1px solid rgba(239,68,68,.45)}
-    .small{padding:10px 12px;font-size:.84rem}
-    .full{width:100%}
-    .invoice-card{background:var(--card);border:1px solid var(--border);border-radius:18px;padding:18px;margin-bottom:14px}
-    .invoice-head{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:14px}
-    .invoice-title{font-size:1.08rem;font-weight:800}
-    .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-    .field{margin-top:12px}
-    .field:first-child{margin-top:0}
-    label{display:block;font-size:.84rem;font-weight:700;margin-bottom:7px}
-    input,select{width:100%;border:1px solid var(--border);border-radius:12px;background:var(--card2);color:var(--text);padding:13px;font-size:1rem;outline:none}
-    input:focus,select:focus{border-color:var(--gold)}
-    .pages{margin-top:14px;display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:10px}
-    .page{position:relative;background:var(--card2);border:1px solid var(--border);border-radius:12px;overflow:hidden;min-height:120px}
-    .page img{display:block;width:100%;height:120px;object-fit:cover}
-    .page.pdf{display:flex;align-items:center;justify-content:center;text-align:center;padding:12px;color:var(--gold2);font-weight:800}
-    .remove-page{position:absolute;right:6px;top:6px;width:30px;height:30px;padding:0;border-radius:50%;background:rgba(0,0,0,.72);color:white}
-    .page-label{padding:8px;font-size:.75rem;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-    .actions{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap}
-    .status{display:none;margin:16px 0;border-radius:12px;padding:14px;font-size:.92rem;line-height:1.5;overflow-wrap:anywhere}
-    .status.show{display:block}
-    .status.loading{background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.35);color:#fbbf24}
-    .status.success{background:rgba(34,197,94,.12);border:1px solid rgba(34,197,94,.35);color:#86efac}
-    .status.error{background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.35);color:#fca5a5}
-    .progress-row{margin-top:8px}
-    .note{margin-top:12px;color:var(--muted);font-size:.82rem;line-height:1.5}
-    .hidden-input{display:none}
-    .camera-modal{position:fixed;inset:0;background:#000;z-index:1000;display:none;flex-direction:column}
-    .camera-modal.show{display:flex}
-    .camera-top{display:flex;justify-content:space-between;align-items:center;padding:14px}
-    .camera-video{width:100%;flex:1;object-fit:cover;background:#000}
-    .camera-controls{display:flex;gap:10px;padding:16px;background:#0b0b0c}
-    .camera-controls button{flex:1}
-    .camera-count{color:var(--gold2);font-weight:800}
-    a{color:var(--gold2)}
-    @media(max-width:560px){
-      .grid{grid-template-columns:1fr}
-      .toolbar{flex-direction:column}
-      .invoice-head{align-items:flex-start}
-    }
-  </style>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#111111">
+  <title>Food Cost Intelligence</title>
+  <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <main class="app">
-    <div class="eyebrow">Focacceria delle Langhe</div>
-    <h1>Fatture AI</h1>
-    <p class="subtitle">Scatta più pagine, separale per fattura e carica tutto con un solo comando.</p>
-
-    <div class="toolbar">
-      <button id="addInvoice" class="secondary" type="button">+ Nuova fattura</button>
-      <button id="uploadAll" class="primary" type="button">Carica tutte le fatture</button>
+  <header class="topbar">
+    <div>
+      <div class="eyebrow">FOCACCERIA DELLE LANGHE</div>
+      <h1>Food Cost Intelligence</h1>
     </div>
+    <button id="homeBtn" class="icon-btn" aria-label="Home">⌂</button>
+  </header>
 
-    <div id="invoiceList"></div>
-    <div id="status" class="status" role="status" aria-live="polite"></div>
+  <main id="app">
+    <section id="view-home" class="view active">
+      <div class="hero-card">
+        <span class="badge">V1</span>
+        <h2>Controllo prezzi da fattura</h2>
+        <p>Carica, revisiona e registra i prezzi normalizzati in un unico flusso.</p>
+      </div>
+      <div class="menu-grid">
+        <button class="menu-card primary" data-nav="upload"><span>＋</span><strong>Nuova fattura</strong><small>Foto o PDF</small></button>
+        <button class="menu-card" data-nav="invoices" data-filter="DA_REVISIONARE"><span>✓</span><strong>Da revisionare</strong><small>Righe da confermare</small></button>
+        <button class="menu-card" data-nav="invoices"><span>≡</span><strong>Fatture</strong><small>Storico e stati</small></button>
+        <button class="menu-card" data-nav="prices"><span>↗</span><strong>Prezzi</strong><small>Ultimo vs precedente</small></button>
+      </div>
+    </section>
 
-    <div class="note">
-      Ogni fattura può contenere un PDF singolo oppure più fotografie. Le fotografie della stessa fattura vengono unite in un unico PDF.
-    </div>
+    <section id="view-upload" class="view">
+      <div class="section-head"><div><h2>Nuova fattura</h2><p>La foto viene compressa sul telefono prima dell'upload.</p></div></div>
+      <form id="uploadForm" class="panel stack">
+        <label class="upload-zone">
+          <input id="fileInput" type="file" accept="image/*,application/pdf" capture="environment" required>
+          <span class="upload-icon">⌁</span>
+          <strong id="fileLabel">Scatta foto o seleziona PDF</strong>
+          <small>JPG, PNG, WEBP o PDF · massimo 12 MB</small>
+        </label>
+        <div class="form-grid">
+          <label><span>Data documento</span><input id="documentDate" type="date"></label>
+          <label><span>Fornitore <em>opzionale</em></span><input id="supplier" type="text" autocomplete="organization"></label>
+          <label><span>Numero documento <em>opzionale</em></span><input id="invoiceNumber" type="text"></label>
+          <label><span>Totale € <em>opzionale</em></span><input id="total" type="number" step="0.01" inputmode="decimal"></label>
+        </div>
+        <button class="btn primary wide" type="submit">Carica e analizza</button>
+      </form>
+      <div id="uploadStatus" class="status-card hidden"></div>
+    </section>
+
+    <section id="view-review" class="view">
+      <div class="section-head">
+        <div><h2>Revisione fattura</h2><p id="reviewSubtitle"></p></div>
+        <span id="reviewState" class="status-pill"></span>
+      </div>
+      <div id="reviewSummary" class="summary-strip"></div>
+      <div id="reviewRows" class="stack"></div>
+      <div class="sticky-actions">
+        <button id="confirmAllBtn" class="btn secondary">Conferma valide</button>
+        <button id="finalizeBtn" class="btn primary">Finalizza fattura</button>
+      </div>
+    </section>
+
+    <section id="view-invoices" class="view">
+      <div class="section-head"><div><h2>Fatture</h2><p>Apri una fattura da revisionare o controlla lo stato.</p></div></div>
+      <div class="filter-row">
+        <select id="invoiceStatusFilter">
+          <option value="">Tutti gli stati</option>
+          <option value="DA_REVISIONARE">Da revisionare</option>
+          <option value="ANALISI_IN_CORSO">In analisi</option>
+          <option value="COMPLETATA">Completate</option>
+          <option value="ERRORE_OCR">Errore OCR</option>
+        </select>
+        <button id="refreshInvoicesBtn" class="btn secondary compact">Aggiorna</button>
+      </div>
+      <div id="invoiceList" class="stack"></div>
+    </section>
+
+    <section id="view-prices" class="view">
+      <div class="section-head"><div><h2>Prezzi</h2><p>Ultimo acquisto, precedente e variazione.</p></div></div>
+      <div class="filter-row prices-filter">
+        <input id="priceSearch" type="search" placeholder="Cerca ingrediente">
+        <select id="categoryFilter"><option value="">Tutte le categorie</option></select>
+      </div>
+      <div id="priceList" class="stack"></div>
+    </section>
   </main>
 
-  <div id="cameraModal" class="camera-modal">
-    <div class="camera-top">
-      <button id="closeCamera" class="secondary small" type="button">Annulla</button>
-      <div class="camera-count"><span id="cameraCount">0</span> pagine</div>
-      <button id="finishCamera" class="primary small" type="button">Fine</button>
-    </div>
-    <video id="cameraVideo" class="camera-video" autoplay playsinline muted></video>
-    <canvas id="cameraCanvas" hidden></canvas>
-    <div class="camera-controls">
-      <button id="takePhoto" class="primary" type="button">Scatta pagina</button>
-    </div>
-  </div>
-
-  <script>
-    const APPS_SCRIPT_ENDPOINT = "https://script.google.com/macros/s/AKfycby8m07UVjrodTBraNECq_7AjtAsbW7-vGF_AHU1pmKjFUpHZgIwuKT-RYpElpFgC9Yq/exec";
-    const invoices = [];
-    let invoiceSequence = 0;
-    let activeCameraInvoiceId = null;
-    let cameraStream = null;
-
-    const $ = (id) => document.getElementById(id);
-    const invoiceList = $("invoiceList");
-    const statusBox = $("status");
-
-    function todayIso() {
-      return new Date().toISOString().slice(0, 10);
-    }
-
-    function createInvoice() {
-      const invoice = {
-        id: ++invoiceSequence,
-        date: todayIso(),
-        number: "",
-        supplier: "",
-        total: "",
-        paper: "SI",
-        files: []
-      };
-      invoices.push(invoice);
-      renderInvoices();
-    }
-
-    function setStatus(type, message) {
-      statusBox.className = `status show ${type}`;
-      statusBox.innerHTML = message;
-    }
-
-    function escapeHtml(value) {
-      return String(value)
-        .replaceAll("&", "&amp;")
-        .replaceAll("<", "&lt;")
-        .replaceAll(">", "&gt;")
-        .replaceAll('"', "&quot;");
-    }
-
-    function renderInvoices() {
-      invoiceList.innerHTML = "";
-
-      invoices.forEach((invoice, index) => {
-        const card = document.createElement("section");
-        card.className = "invoice-card";
-        card.dataset.invoiceId = invoice.id;
-
-        card.innerHTML = `
-          <div class="invoice-head">
-            <div class="invoice-title">Fattura ${index + 1}</div>
-            ${invoices.length > 1 ? `<button class="danger small remove-invoice" type="button">Elimina fattura</button>` : ""}
-          </div>
-
-          <div class="grid">
-            <div class="field">
-              <label>Data fattura</label>
-              <input class="invoice-date" type="date" value="${escapeHtml(invoice.date)}" />
-            </div>
-            <div class="field">
-              <label>Numero fattura</label>
-              <input class="invoice-number" type="text" maxlength="80" value="${escapeHtml(invoice.number)}" placeholder="Es. 1234/2026" />
-            </div>
-          </div>
-
-          <div class="field">
-            <label>Fornitore</label>
-            <input class="invoice-supplier" type="text" maxlength="120" value="${escapeHtml(invoice.supplier)}" placeholder="Es. Versounico" />
-          </div>
-
-          <div class="grid">
-            <div class="field">
-              <label>Totale fattura (€)</label>
-              <input class="invoice-total" type="number" min="0" step="0.01" inputmode="decimal" value="${escapeHtml(invoice.total)}" placeholder="0,00" />
-            </div>
-            <div class="field">
-              <label>Cartaceo disponibile</label>
-              <select class="invoice-paper">
-                <option value="SI" ${invoice.paper === "SI" ? "selected" : ""}>Sì</option>
-                <option value="NO" ${invoice.paper === "NO" ? "selected" : ""}>No</option>
-              </select>
-            </div>
-          </div>
-
-          <div class="actions">
-            <button class="secondary small open-camera" type="button">Apri fotocamera</button>
-            <button class="secondary small choose-files" type="button">Scegli foto o PDF</button>
-            <input class="hidden-input file-input" type="file" accept="image/*,application/pdf" multiple />
-          </div>
-
-          <div class="pages">
-            ${invoice.files.map((item, fileIndex) => {
-              if (item.file.type === "application/pdf") {
-                return `
-                  <div class="page pdf">
-                    <button class="remove-page" data-file-index="${fileIndex}" type="button">×</button>
-                    <div>PDF<br><small>${escapeHtml(item.file.name)}</small></div>
-                  </div>`;
-              }
-
-              return `
-                <div class="page">
-                  <button class="remove-page" data-file-index="${fileIndex}" type="button">×</button>
-                  <img src="${item.previewUrl}" alt="Pagina ${fileIndex + 1}" />
-                  <div class="page-label">Pagina ${fileIndex + 1}</div>
-                </div>`;
-            }).join("")}
-          </div>
-        `;
-
-        bindCardEvents(card, invoice);
-        invoiceList.appendChild(card);
-      });
-    }
-
-    function bindCardEvents(card, invoice) {
-      card.querySelector(".invoice-date").addEventListener("input", e => invoice.date = e.target.value);
-      card.querySelector(".invoice-number").addEventListener("input", e => invoice.number = e.target.value);
-      card.querySelector(".invoice-supplier").addEventListener("input", e => invoice.supplier = e.target.value);
-      card.querySelector(".invoice-total").addEventListener("input", e => invoice.total = e.target.value);
-      card.querySelector(".invoice-paper").addEventListener("change", e => invoice.paper = e.target.value);
-
-      const removeInvoice = card.querySelector(".remove-invoice");
-      if (removeInvoice) {
-        removeInvoice.addEventListener("click", () => {
-          invoice.files.forEach(item => {
-            if (item.previewUrl) URL.revokeObjectURL(item.previewUrl);
-          });
-          const index = invoices.findIndex(item => item.id === invoice.id);
-          invoices.splice(index, 1);
-          renderInvoices();
-        });
-      }
-
-      const fileInput = card.querySelector(".file-input");
-      card.querySelector(".choose-files").addEventListener("click", () => fileInput.click());
-
-      fileInput.addEventListener("change", event => {
-        addFilesToInvoice(invoice, Array.from(event.target.files || []));
-        event.target.value = "";
-      });
-
-      card.querySelector(".open-camera").addEventListener("click", () => openCamera(invoice.id));
-
-      card.querySelectorAll(".remove-page").forEach(button => {
-        button.addEventListener("click", () => {
-          const fileIndex = Number(button.dataset.fileIndex);
-          const removed = invoice.files.splice(fileIndex, 1)[0];
-          if (removed && removed.previewUrl) URL.revokeObjectURL(removed.previewUrl);
-          renderInvoices();
-        });
-      });
-    }
-
-    function addFilesToInvoice(invoice, files) {
-      if (!files.length) return;
-
-      const containsPdf = files.some(file => file.type === "application/pdf");
-      const alreadyHasFiles = invoice.files.length > 0;
-
-      if (containsPdf && (files.length > 1 || alreadyHasFiles)) {
-        setStatus("error", "Un PDF deve essere caricato da solo nella propria fattura.");
-        return;
-      }
-
-      if (!containsPdf && invoice.files.some(item => item.file.type === "application/pdf")) {
-        setStatus("error", "Non puoi aggiungere fotografie a una fattura che contiene già un PDF.");
-        return;
-      }
-
-      if (invoice.files.length + files.length > 10) {
-        setStatus("error", "Massimo 10 pagine per fattura.");
-        return;
-      }
-
-      for (const file of files) {
-        const allowed = [
-          "application/pdf",
-          "image/jpeg",
-          "image/png",
-          "image/webp",
-          "image/heic",
-          "image/heif"
-        ];
-
-        if (file.type && !allowed.includes(file.type)) {
-          setStatus("error", `Formato non supportato: ${file.name}`);
-          return;
-        }
-
-        if (file.size > 8 * 1024 * 1024) {
-          setStatus("error", `${file.name} supera il limite di 8 MB.`);
-          return;
-        }
-      }
-
-      files.forEach(file => {
-        invoice.files.push({
-          file,
-          previewUrl: file.type.startsWith("image/") ? URL.createObjectURL(file) : ""
-        });
-      });
-
-      statusBox.className = "status";
-      renderInvoices();
-    }
-
-    async function openCamera(invoiceId) {
-      activeCameraInvoiceId = invoiceId;
-      $("cameraCount").textContent = "0";
-
-      try {
-        cameraStream = await navigator.mediaDevices.getUserMedia({
-          video: {
-            facingMode: { ideal: "environment" },
-            width: { ideal: 1920 },
-            height: { ideal: 1080 }
-          },
-          audio: false
-        });
-
-        $("cameraVideo").srcObject = cameraStream;
-        $("cameraModal").classList.add("show");
-      } catch (error) {
-        setStatus("error", "Impossibile aprire la fotocamera. Controlla i permessi del browser.");
-      }
-    }
-
-    function stopCamera() {
-      if (cameraStream) {
-        cameraStream.getTracks().forEach(track => track.stop());
-        cameraStream = null;
-      }
-      $("cameraVideo").srcObject = null;
-      $("cameraModal").classList.remove("show");
-      activeCameraInvoiceId = null;
-    }
-
-    $("takePhoto").addEventListener("click", () => {
-      const video = $("cameraVideo");
-      const canvas = $("cameraCanvas");
-      const invoice = invoices.find(item => item.id === activeCameraInvoiceId);
-
-      if (!invoice || !video.videoWidth || !video.videoHeight) return;
-      if (invoice.files.length >= 10) {
-        setStatus("error", "Massimo 10 pagine per fattura.");
-        stopCamera();
-        return;
-      }
-
-      const maxWidth = 1800;
-      const scale = Math.min(1, maxWidth / video.videoWidth);
-      canvas.width = Math.round(video.videoWidth * scale);
-      canvas.height = Math.round(video.videoHeight * scale);
-
-      const context = canvas.getContext("2d");
-      context.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-      canvas.toBlob(blob => {
-        if (!blob) return;
-
-        const file = new File(
-          [blob],
-          `pagina-${invoice.files.length + 1}.jpg`,
-          { type: "image/jpeg" }
-        );
-
-        invoice.files.push({
-          file,
-          previewUrl: URL.createObjectURL(file)
-        });
-
-        $("cameraCount").textContent = String(
-          Number($("cameraCount").textContent) + 1
-        );
-      }, "image/jpeg", 0.88);
-    });
-
-    $("finishCamera").addEventListener("click", () => {
-      stopCamera();
-      renderInvoices();
-    });
-
-    $("closeCamera").addEventListener("click", () => {
-      stopCamera();
-      renderInvoices();
-    });
-
-    function readFileAsBase64(file) {
-      return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-
-        reader.onload = () => {
-          const result = String(reader.result || "");
-          const commaIndex = result.indexOf(",");
-
-          if (commaIndex === -1) {
-            reject(new Error("Formato file non leggibile"));
-            return;
-          }
-
-          resolve(result.slice(commaIndex + 1));
-        };
-
-        reader.onerror = () => reject(
-          new Error("Errore durante la lettura del file")
-        );
-
-        reader.readAsDataURL(file);
-      });
-    }
-
-    function validateInvoice(invoice, index) {
-      if (!invoice.date) return `Fattura ${index + 1}: data mancante`;
-      if (!invoice.number.trim()) return `Fattura ${index + 1}: numero mancante`;
-      if (!invoice.supplier.trim()) return `Fattura ${index + 1}: fornitore mancante`;
-      if (!invoice.files.length) return `Fattura ${index + 1}: nessuna pagina o PDF`;
-      return "";
-    }
-
-    async function uploadInvoice(invoice) {
-      const files = [];
-
-      for (const item of invoice.files) {
-        files.push({
-          originalFileName: item.file.name,
-          mimeType: item.file.type || "application/octet-stream",
-          fileBase64: await readFileAsBase64(item.file)
-        });
-      }
-
-      const payload = {
-        action: "upload_invoice_group",
-        invoiceDate: invoice.date,
-        invoiceNumber: invoice.number.trim(),
-        supplier: invoice.supplier.trim(),
-        total: invoice.total || "",
-        paperAvailable: invoice.paper,
-        files,
-        clientTimestamp: new Date().toISOString()
-      };
-
-      const response = await fetch(APPS_SCRIPT_ENDPOINT, {
-        method: "POST",
-        headers: { "Content-Type": "text/plain;charset=utf-8" },
-        body: JSON.stringify(payload)
-      });
-
-      const rawText = await response.text();
-      let data;
-
-      try {
-        data = JSON.parse(rawText);
-      } catch {
-        throw new Error(`Risposta backend non valida: ${rawText.slice(0, 200)}`);
-      }
-
-      if (!response.ok || data.success !== true) {
-        throw new Error(data.error || `Errore HTTP ${response.status}`);
-      }
-
-      return data;
-    }
-
-    $("addInvoice").addEventListener("click", createInvoice);
-
-    $("uploadAll").addEventListener("click", async () => {
-      for (let index = 0; index < invoices.length; index++) {
-        const validationError = validateInvoice(invoices[index], index);
-        if (validationError) {
-          setStatus("error", validationError);
-          return;
-        }
-      }
-
-      const uploadButton = $("uploadAll");
-      uploadButton.disabled = true;
-      $("addInvoice").disabled = true;
-
-      const results = [];
-
-      try {
-        for (let index = 0; index < invoices.length; index++) {
-          setStatus(
-            "loading",
-            `Caricamento fattura ${index + 1} di ${invoices.length}...`
-          );
-
-          try {
-            const data = await uploadInvoice(invoices[index]);
-            results.push({
-              ok: true,
-              position: index + 1,
-              id: data.invoiceId,
-              link: data.driveUrl
-            });
-          } catch (error) {
-            results.push({
-              ok: false,
-              position: index + 1,
-              error: error.message
-            });
-          }
-        }
-
-        const okCount = results.filter(item => item.ok).length;
-        const failed = results.filter(item => !item.ok);
-
-        if (!failed.length) {
-          setStatus(
-            "success",
-            `Caricamento completato: ${okCount} fatture registrate correttamente.`
-          );
-
-          invoices.forEach(invoice => {
-            invoice.files.forEach(item => {
-              if (item.previewUrl) URL.revokeObjectURL(item.previewUrl);
-            });
-          });
-
-          invoices.length = 0;
-          invoiceSequence = 0;
-          createInvoice();
-        } else {
-          setStatus(
-            "error",
-            `${okCount} fatture caricate; ${failed.length} non riuscite.<br>` +
-            failed.map(item =>
-              `Fattura ${item.position}: ${escapeHtml(item.error)}`
-            ).join("<br>")
-          );
-        }
-      } finally {
-        uploadButton.disabled = false;
-        $("addInvoice").disabled = false;
-      }
-    });
-
-    createInvoice();
-  </script>
+  <div id="toast" class="toast"></div>
+  <div id="loader" class="loader-overlay hidden"><div class="spinner"></div><p id="loaderText">Elaborazione…</p></div>
+
+  <script src="config.js"></script>
+  <script src="app.js"></script>
 </body>
 </html>
