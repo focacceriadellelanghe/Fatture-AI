@@ -2,7 +2,7 @@
   'use strict';
 
   const cfg = window.FCI_CONFIG || {};
-  const state = { ingredients: [], currentInvoiceId: '', allPrices: [], uploadGroups: [] };
+  const state = { ingredients: [], units: [], currentInvoiceId: '', allPrices: [], uploadGroups: [], newIngredientRowId: '' };
   const $ = (id) => document.getElementById(id);
   const qsa = (sel) => Array.from(document.querySelectorAll(sel));
 
@@ -23,6 +23,18 @@
     $('finalizeBtn').addEventListener('click', finalizeInvoice);
     $('priceSearch').addEventListener('input', renderPriceFilter);
     $('categoryFilter').addEventListener('change', renderPriceFilter);
+    $('ingredientModalCancel').addEventListener('click', closeIngredientModal);
+    $('ingredientModalForm').addEventListener('submit', submitNewIngredient);
+    $('ingredientModalUnit').addEventListener('change', async (e) => {
+      if (e.target.value === '__NEW__') {
+        const unit = await createUnitFromPrompt();
+        if (unit) {
+          populateUnitSelect($('ingredientModalUnit'), unit);
+        } else {
+          e.target.value = '';
+        }
+      }
+    });
     addUploadGroup();
   }
 
@@ -165,7 +177,7 @@
 
       if (results.length === 1) {
         state.currentInvoiceId = results[0].invoiceId;
-        await ensureIngredients();
+        await ensureCatalog();
         renderReview(results[0].review);
         await navigate('review');
         toast('OCR completato. Controlla le righe.');
@@ -208,16 +220,22 @@
     });
   }
 
-  async function ensureIngredients() {
-    if (state.ingredients.length) return;
-    const r = await api('get_ingredients');
-    state.ingredients = r.ingredients || [];
+  async function ensureCatalog() {
+    if (!state.ingredients.length) {
+      const r = await api('get_ingredients');
+      state.ingredients = r.ingredients || [];
+    }
+    if (!state.units.length) {
+      const r = await api('get_tracking_units');
+      state.units = r.units || ['€/kg','€/l','€/pz','€/confezione'];
+    }
   }
+
 
   async function openReview(invoiceId) {
     setLoader(true, 'Caricamento revisione…');
     try {
-      await ensureIngredients();
+      await ensureCatalog();
       const r = await api('get_invoice_review', {invoiceId});
       state.currentInvoiceId = invoiceId;
       renderReview(r);
@@ -235,24 +253,46 @@
   }
 
   function reviewCardHtml(r) {
-    const ingredientOptions = ['<option value="">— Seleziona ingrediente —</option>'].concat(state.ingredients.map(i => `<option value="${esc(i.id)}" ${i.id===r.ingredientId?'selected':''}>${esc(i.name)}${i.category?' · '+esc(i.category):''}</option>`)).join('');
-    const price = num(r.normalizedQuantity) > 0 && num(r.lineNetAmount) !== null ? num(r.lineNetAmount)/num(r.normalizedQuantity) : null;
+    const ingredientOptions = ['<option value="">— Seleziona ingrediente —</option>']
+      .concat(state.ingredients.map(i => `<option value="${esc(i.id)}" ${i.id===r.ingredientId?'selected':''}>${esc(i.name)}${i.category?' · '+esc(i.category):''}</option>`))
+      .join('');
+    const docUnit = canonicalUnitClient(r.documentUnit);
+    const trackUnit = canonicalUnitClient(r.comparisonUnit);
+    const docOptions = unitOptionsHtml(docUnit);
+    const trackOptions = unitOptionsHtml(trackUnit);
+    const price = num(r.normalizedQuantity) > 0 && num(r.lineNetAmount) !== null
+      ? num(r.lineNetAmount) / num(r.normalizedQuantity) : null;
     const cls = r.status === 'CONFERMATO' ? 'confirmed' : r.status === 'ESCLUSO' ? 'excluded' : '';
+
     return `<article class="review-card ${cls}" data-row-id="${esc(r.rowId)}">
       <div class="review-title"><h3>${esc(r.description || 'Riga senza descrizione')}</h3><span class="confidence">${r.confidence || 0}%</span></div>
       <div class="muted small">${r.itemCode ? 'Codice '+esc(r.itemCode)+' · ' : ''}Stato: ${esc(r.status)}</div>
+
       <div class="meta-grid">
-        <div class="meta"><small>Q.tà documento</small><strong>${fmt(r.documentQuantity)} ${esc(r.documentUnit)}</strong></div>
         <div class="meta"><small>Imponibile</small><strong>${money(r.lineNetAmount)}</strong></div>
+        <div class="meta"><small>Prezzo documento</small><strong>${r.documentUnitPrice===''?'—':money(r.documentUnitPrice)}</strong></div>
         <div class="meta"><small>Sconto</small><strong>${r.discountPercent===''?'—':fmt(r.discountPercent)+'%'}</strong></div>
         <div class="meta"><small>IVA</small><strong>${r.vatRate===''?'—':fmt(r.vatRate)+'%'}</strong></div>
       </div>
-      <div class="field"><span>Ingrediente / prodotto</span><select class="ingredient-select">${ingredientOptions}</select></div>
-      <div class="form-grid" style="margin-top:10px">
-        <label><span>Quantità normalizzata</span><input class="qty-input" type="number" step="0.000001" value="${esc(r.normalizedQuantity)}"></label>
-        <label><span>Unità confronto</span><input class="unit-input" type="text" value="${esc(r.comparisonUnit)}"></label>
+
+      <div class="field">
+        <span>Ingrediente / prodotto</span>
+        <select class="ingredient-select">${ingredientOptions}</select>
+        <button type="button" class="inline-add new-ingredient-btn">＋ Nuovo ingrediente / prodotto</button>
       </div>
-      <div class="meta" style="margin-top:10px"><small>Prezzo normalizzato stimato</small><strong>${price===null?'—':fmt(price,4)+' '+esc(r.comparisonUnit)}</strong></div>
+
+      <div class="form-grid review-units-grid" style="margin-top:10px">
+        <label><span>Quantità fattura</span><input class="document-qty-input" type="number" step="0.000001" inputmode="decimal" value="${esc(r.documentQuantity)}"></label>
+        <label><span>Unità fattura</span><select class="document-unit-select">${docOptions}</select></label>
+        <label><span>Quantità da tracciare</span><input class="tracking-qty-input" type="number" step="0.000001" inputmode="decimal" value="${esc(r.normalizedQuantity)}"></label>
+        <label><span>Unità da tracciare</span><select class="tracking-unit-select">${trackOptions}</select></label>
+      </div>
+
+      <div class="meta" style="margin-top:10px">
+        <small>Prezzo da tracciare stimato</small>
+        <strong>${price===null?'—':fmt(price,6)+' '+esc(trackUnit)}</strong>
+      </div>
+
       <div class="review-actions">
         <button class="btn danger exclude-btn">Escludi</button>
         <button class="btn primary confirm-btn">Conferma</button>
@@ -260,20 +300,66 @@
     </article>`;
   }
 
+
   function bindReviewCard(card) {
     const el = document.querySelector(`[data-row-id="${cssEsc(card.rowId)}"]`);
     if (!el) return;
+
+    const ingredientSelect = el.querySelector('.ingredient-select');
+    const trackingUnitSelect = el.querySelector('.tracking-unit-select');
+    const documentUnitSelect = el.querySelector('.document-unit-select');
+
+    ingredientSelect.addEventListener('change', () => {
+      const ing = state.ingredients.find(i => i.id === ingredientSelect.value);
+      if (ing && ing.unit) {
+        ensureOptionAndSelect(trackingUnitSelect, canonicalUnitClient(ing.unit));
+      }
+    });
+
+    [trackingUnitSelect, documentUnitSelect].forEach(select => {
+      select.addEventListener('change', async () => {
+        if (select.value === '__NEW__') {
+          const unit = await createUnitFromPrompt();
+          if (unit) ensureOptionAndSelect(select, unit);
+          else select.value = '';
+        }
+      });
+    });
+
+    el.querySelector('.new-ingredient-btn').addEventListener('click', () => {
+      state.newIngredientRowId = card.rowId;
+      openIngredientModal(card);
+    });
+
     el.querySelector('.confirm-btn').addEventListener('click', async () => {
       try {
-        await api('update_row', {rowId:card.rowId, ingredientId:el.querySelector('.ingredient-select').value, normalizedQuantity:el.querySelector('.qty-input').value, comparisonUnit:el.querySelector('.unit-input').value});
-        await api('confirm_row', {rowId:card.rowId, ingredientId:el.querySelector('.ingredient-select').value});
-        await refreshCurrentReview(); toast('Riga confermata');
+        const ingredientId = ingredientSelect.value;
+        await api('update_row', {
+          rowId: card.rowId,
+          ingredientId,
+          documentQuantity: el.querySelector('.document-qty-input').value,
+          documentUnit: documentUnitSelect.value,
+          normalizedQuantity: el.querySelector('.tracking-qty-input').value,
+          comparisonUnit: trackingUnitSelect.value,
+          saveTrackingUnitAsDefault: true
+        });
+        await api('confirm_row', {rowId: card.rowId, ingredientId});
+        await refreshCurrentReview();
+        state.ingredients = [];
+        await ensureCatalog();
+        toast('Riga confermata');
+      } catch(e) { toast(e.message); }
+    });
+
+    el.querySelector('.exclude-btn').addEventListener('click', async () => {
+      try {
+        await api('exclude_row',{rowId:card.rowId});
+        await refreshCurrentReview();
+        toast('Riga esclusa');
       } catch(e){toast(e.message)}
     });
-    el.querySelector('.exclude-btn').addEventListener('click', async () => {
-      try { await api('exclude_row',{rowId:card.rowId}); await refreshCurrentReview(); toast('Riga esclusa'); } catch(e){toast(e.message)}
-    });
   }
+
 
   async function refreshCurrentReview() {
     const r = await api('get_invoice_review', {invoiceId:state.currentInvoiceId});
@@ -293,9 +379,25 @@
     try {
       const r = await api('finalize_invoice',{invoiceId:state.currentInvoiceId});
       toast(`Fattura completata · ${r.historyRowsCreated || 0} prezzi registrati`);
-      await loadInvoices(); navigate('invoices');
-    } catch(e){toast(e.message)} finally{setLoader(false)}
+      $('invoiceStatusFilter').value = '';
+      await navigate('invoices');
+    } catch(e) {
+      // Recupero: il backend può aver completato la fattura anche se la risposta di rete si interrompe.
+      try {
+        const check = await api('get_invoice_review', {invoiceId: state.currentInvoiceId});
+        if (String(check.invoice && check.invoice.status || '').toUpperCase() === 'COMPLETATA') {
+          toast('Fattura completata correttamente');
+          $('invoiceStatusFilter').value = '';
+          await navigate('invoices');
+          return;
+        }
+      } catch (_) {}
+      toast(e.message);
+    } finally {
+      setLoader(false);
+    }
   }
+
 
   async function loadInvoices() {
     const list = $('invoiceList'); list.innerHTML = '<div class="status-card">Caricamento…</div>';
@@ -331,6 +433,107 @@
         <div class="meta-grid"><div class="meta"><small>Precedente</small><strong>${x.previousPrice===''?'—':fmt(x.previousPrice,4)}</strong></div><div class="meta"><small>Variazione</small><strong class="delta ${cls}">${d===null?'—':(d>0?'+':'')+fmt(d,2)+'%'}</strong></div></div>
         <div class="muted small">${esc(x.unit)} · ultimo acquisto ${esc(x.lastPurchaseDate||'—')}</div></article>`;
     }).join('') || '<div class="status-card">Nessun prezzo disponibile.</div>';
+  }
+
+
+  function canonicalUnitClient(value) {
+    const raw = String(value || '').trim();
+    if (!raw) return '';
+    const u = raw.toLowerCase().replace(/\s+/g,'');
+    if (['kg','€/kg','€kg'].includes(u)) return '€/kg';
+    if (['l','lt','€/l','€l'].includes(u)) return '€/l';
+    if (['pz','pz.','pezzo','pezzi','nr','€/pz','€/pezzo','€pz'].includes(u)) return '€/pz';
+    if (['ct','cf','conf','confezione','confezioni','€/confezione','€confezione'].includes(u)) return '€/confezione';
+    return raw;
+  }
+
+  function unitOptionsHtml(selected='') {
+    const value = canonicalUnitClient(selected);
+    const all = [...state.units];
+    if (value && !all.includes(value)) all.push(value);
+    return ['<option value="">— Seleziona —</option>']
+      .concat(all.map(u => `<option value="${esc(u)}" ${u===value?'selected':''}>${esc(u)}</option>`))
+      .concat(['<option value="__NEW__">＋ Aggiungi nuova unità</option>'])
+      .join('');
+  }
+
+  function populateUnitSelect(select, selected='') {
+    select.innerHTML = unitOptionsHtml(selected);
+  }
+
+  function ensureOptionAndSelect(select, value) {
+    const v = canonicalUnitClient(value);
+    if (!v) return;
+    if (![...select.options].some(o => o.value === v)) {
+      const opt = document.createElement('option');
+      opt.value = v;
+      opt.textContent = v;
+      select.insertBefore(opt, select.lastElementChild);
+    }
+    select.value = v;
+  }
+
+  async function createUnitFromPrompt() {
+    const raw = window.prompt('Scrivi la nuova unità da salvare, ad esempio €/metro:');
+    if (!raw || !raw.trim()) return '';
+    try {
+      const r = await api('create_tracking_unit', {unit: raw.trim()});
+      state.units = r.units || state.units;
+      return r.unit;
+    } catch(e) {
+      toast(e.message);
+      return '';
+    }
+  }
+
+  function openIngredientModal(card) {
+    $('ingredientModalTitle').textContent = 'Nuovo ingrediente / prodotto';
+    $('ingredientModalName').value = '';
+    $('ingredientModalCategory').value = '';
+    $('ingredientModalSubcategory').value = '';
+    populateUnitSelect($('ingredientModalUnit'), '');
+    $('ingredientModal').classList.remove('hidden');
+    setTimeout(() => $('ingredientModalName').focus(), 50);
+  }
+
+  function closeIngredientModal() {
+    $('ingredientModal').classList.add('hidden');
+    state.newIngredientRowId = '';
+  }
+
+  async function submitNewIngredient(e) {
+    e.preventDefault();
+    const unitSelect = $('ingredientModalUnit');
+    if (unitSelect.value === '__NEW__') {
+      const unit = await createUnitFromPrompt();
+      if (!unit) return;
+      populateUnitSelect(unitSelect, unit);
+    }
+    try {
+      const r = await api('create_ingredient', {
+        name: $('ingredientModalName').value.trim(),
+        category: $('ingredientModalCategory').value.trim(),
+        subcategory: $('ingredientModalSubcategory').value.trim(),
+        unit: unitSelect.value
+      });
+      state.ingredients.push(r.ingredient);
+      state.ingredients.sort((a,b)=>a.name.localeCompare(b.name,'it'));
+      const rowId = state.newIngredientRowId;
+      closeIngredientModal();
+      const el = document.querySelector(`[data-row-id="${cssEsc(rowId)}"]`);
+      if (el) {
+        const select = el.querySelector('.ingredient-select');
+        const opt = document.createElement('option');
+        opt.value = r.ingredient.id;
+        opt.textContent = `${r.ingredient.name}${r.ingredient.category?' · '+r.ingredient.category:''}`;
+        select.appendChild(opt);
+        select.value = r.ingredient.id;
+        ensureOptionAndSelect(el.querySelector('.tracking-unit-select'), r.ingredient.unit);
+      }
+      toast(`${r.ingredient.id} creato`);
+    } catch(e) {
+      toast(e.message);
+    }
   }
 
   function setLoader(show,text='Elaborazione…'){ $('loader').classList.toggle('hidden',!show); $('loaderText').textContent=text; }

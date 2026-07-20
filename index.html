@@ -86,6 +86,23 @@
     </section>
   </main>
 
+
+  <div id="ingredientModal" class="modal-overlay hidden">
+    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="ingredientModalTitle">
+      <h2 id="ingredientModalTitle">Nuovo ingrediente / prodotto</h2>
+      <form id="ingredientModalForm" class="stack">
+        <label class="field"><span>Nome</span><input id="ingredientModalName" type="text" required></label>
+        <label class="field"><span>Categoria</span><input id="ingredientModalCategory" type="text"></label>
+        <label class="field"><span>Sottocategoria</span><input id="ingredientModalSubcategory" type="text"></label>
+        <label class="field"><span>Unità da tracciare</span><select id="ingredientModalUnit" required></select></label>
+        <div class="review-actions">
+          <button id="ingredientModalCancel" class="btn secondary" type="button">Annulla</button>
+          <button class="btn primary" type="submit">Crea</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <div id="toast" class="toast"></div>
   <div id="loader" class="loader-overlay hidden"><div class="spinner"></div><p id="loaderText">Elaborazione…</p></div>
 
