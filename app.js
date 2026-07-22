@@ -2,7 +2,7 @@
   'use strict';
 
   const cfg = window.FCI_CONFIG || {};
-  const state = { ingredients: [], units: [], currentInvoiceId: '', allPrices: [], uploadGroups: [], newIngredientRowId: '' };
+  const state = { ingredients: [], units: [], currentInvoiceId: '', allPrices: [], notifications: [], uploadGroups: [], newIngredientRowId: '', priceChart: null };
   const $ = (id) => document.getElementById(id);
   const qsa = (sel) => Array.from(document.querySelectorAll(sel));
 
@@ -23,6 +23,8 @@
     $('finalizeBtn').addEventListener('click', finalizeInvoice);
     $('priceSearch').addEventListener('input', renderPriceFilter);
     $('categoryFilter').addEventListener('change', renderPriceFilter);
+    $('priceDetailClose').addEventListener('click', closePriceDetail);
+    $('priceDetailModal').addEventListener('click', (e) => { if (e.target.id === 'priceDetailModal') closePriceDetail(); });
     $('ingredientModalCancel').addEventListener('click', closeIngredientModal);
     $('ingredientModalForm').addEventListener('submit', submitNewIngredient);
     $('ingredientModalUnit').addEventListener('change', async (e) => {
@@ -384,7 +386,9 @@
     setLoader(true, 'Registrazione storico e chiusura…');
     try {
       const r = await api('finalize_invoice',{invoiceId:state.currentInvoiceId});
-      toast(`Fattura completata · ${r.historyRowsCreated || 0} prezzi registrati`);
+      const intel = r.intelligence || {};
+      const alerts = (Number(intel.priceNotifications)||0) + (Number(intel.marginNotifications)||0);
+      toast(`Fattura completata · ${r.historyRowsCreated || 0} prezzi registrati${alerts ? ` · ${alerts} alert` : ''}`);
       $('invoiceStatusFilter').value = '';
       await navigate('invoices');
     } catch(e) {
@@ -421,13 +425,58 @@
 
   async function loadPrices() {
     $('priceList').innerHTML = '<div class="status-card">Caricamento…</div>';
+    $('notificationList').innerHTML = '<div class="status-card">Caricamento notifiche…</div>';
     try {
       const r = await api('get_price_dashboard');
       state.allPrices = r.items || [];
-      const cats = Array.from(new Set(state.allPrices.map(x=>x.category).filter(Boolean))).sort();
+      state.notifications = r.notifications || [];
+      const cats = r.categories || Array.from(new Set(state.allPrices.map(x=>x.category).filter(Boolean))).sort();
       $('categoryFilter').innerHTML = '<option value="">Tutte le categorie</option>'+cats.map(c=>`<option value="${esc(c)}">${esc(c)}</option>`).join('');
+      renderNotifications();
       renderPriceFilter();
-    } catch(e){$('priceList').innerHTML=`<div class="status-card">${esc(e.message)}</div>`}
+    } catch(e){
+      $('priceList').innerHTML=`<div class="status-card">${esc(e.message)}</div>`;
+      $('notificationList').innerHTML='';
+    }
+  }
+
+  function renderNotifications() {
+    const rows = state.notifications || [];
+    $('notificationCount').textContent = rows.length;
+    $('notificationList').innerHTML = rows.map(n => {
+      const color = String(n.color || 'NEUTRO').toLowerCase();
+      const isMargin = String(n.type || '').toUpperCase() === 'MARGINE';
+      const value = isMargin
+        ? `${num(n.changePoints) > 0 ? '+' : ''}${fmt(n.changePoints,2)} pt`
+        : `${num(n.changePercent) > 0 ? '+' : ''}${fmt(n.changePercent,2)}%`;
+      const detail = isMargin
+        ? `${fmt(n.previousValue,2)}% → ${fmt(n.newValue,2)}%`
+        : `${fmt(n.previousValue,5)} → ${fmt(n.newValue,5)} ${esc(n.unit || '')}`;
+      return `<article class="notification-card sev-${esc(color)}" data-notification-id="${esc(n.id)}">
+        <div class="notification-accent"></div>
+        <div class="notification-main">
+          <h4>${esc(n.item || n.type)}</h4>
+          <p>${esc(n.detail || '')}</p>
+          <p>${detail}${n.eventDate ? ' · '+esc(formatDateIt(n.eventDate)) : ''}</p>
+        </div>
+        <div class="notification-value">${value}</div>
+        <button class="ack-btn" type="button">Segna letta</button>
+      </article>`;
+    }).join('') || '<div class="status-card">Nessuna nuova notifica.</div>';
+
+    qsa('[data-notification-id] .ack-btn').forEach(btn => btn.addEventListener('click', async () => {
+      const card = btn.closest('[data-notification-id]');
+      const id = card.dataset.notificationId;
+      btn.disabled = true;
+      try {
+        await api('acknowledge_notification', {notificationId:id});
+        state.notifications = state.notifications.filter(n => n.id !== id);
+        renderNotifications();
+      } catch(e) {
+        btn.disabled = false;
+        toast(e.message);
+      }
+    }));
   }
 
   function renderPriceFilter() {
@@ -435,19 +484,133 @@
     const items = state.allPrices.filter(x => (!s || x.ingredient.toLowerCase().includes(s)) && (!c || x.category===c));
     $('priceList').innerHTML = items.map(x => {
       const d = num(x.changePercent), cls = d===null?'flat':d>0?'up':d<0?'down':'flat';
-      return `<article class="price-card"><div class="price-head"><div><h3>${esc(x.ingredient)}</h3><div class="muted small">${esc(x.category||'Senza categoria')} · ${esc(x.supplier||'')}</div></div><div class="price-value">${fmt(x.latestPrice,4)}</div></div>
-        <div class="meta-grid"><div class="meta"><small>Precedente</small><strong>${x.previousPrice===''?'—':fmt(x.previousPrice,4)}</strong></div><div class="meta"><small>Variazione</small><strong class="delta ${cls}">${d===null?'—':(d>0?'+':'')+fmt(d,2)+'%'}</strong></div></div>
-        <div class="muted small">${esc(x.unit)} · ultimo acquisto ${esc(x.lastPurchaseDate||'—')}</div></article>`;
+      const border = d===null||d===0?'':d<0?'alert-down':Math.abs(d)>=7?'alert-high':Math.abs(d)>=3?'alert-mid':'alert-low';
+      const avg90 = num(x.weightedAverage90Days);
+      const d90 = num(x.changeVs90DaysAveragePercent);
+      const cls90 = d90===null?'flat':d90>0?'up':d90<0?'down':'flat';
+      return `<article class="price-card ${border}" data-price-id="${esc(x.ingredientId)}">
+        <div class="price-head">
+          <div><h3>${esc(x.ingredient)}</h3><div class="muted small">${esc(x.category||'Senza categoria')} · ${esc(x.supplier||'')}</div></div>
+          <div class="price-value">${fmt(x.latestPrice,4)}</div>
+        </div>
+        <div class="meta-grid">
+          <div class="meta"><small>Precedente</small><strong>${x.previousPrice===''?'—':fmt(x.previousPrice,4)}</strong></div>
+          <div class="meta"><small>Variazione</small><strong class="delta ${cls}">${d===null?'—':(d>0?'+':'')+fmt(d,2)+'%'}</strong></div>
+        </div>
+        <div class="price-submetrics">
+          <div class="meta"><small>Media 90 gg</small><strong>${avg90===null?'—':fmt(avg90,4)}</strong></div>
+          <div class="meta"><small>Vs media 90 gg</small><strong class="delta ${cls90}">${d90===null?'—':(d90>0?'+':'')+fmt(d90,2)+'%'}</strong></div>
+        </div>
+        <div class="muted small" style="margin-top:9px">${esc(x.unit)} · ultimo acquisto ${esc(formatDateIt(x.lastPurchaseDate||''))}</div>
+      </article>`;
     }).join('') || '<div class="status-card">Nessun prezzo disponibile.</div>';
+    qsa('[data-price-id]').forEach(card => card.addEventListener('click', () => openPriceDetail(card.dataset.priceId)));
   }
 
+  function openPriceDetail(id) {
+    const item = state.allPrices.find(x => x.ingredientId === id);
+    if (!item) return;
+    $('priceDetailTitle').textContent = item.ingredient;
+    $('priceDetailSubtitle').textContent = `${item.category || 'Senza categoria'} · ${item.unit || ''}`;
+
+    const kpis = [
+      ['Ultimo prezzo', fmt(item.latestPrice,5)+' '+(item.unit||'')],
+      ['Prezzo precedente', item.previousPrice===''?'—':fmt(item.previousPrice,5)+' '+(item.unit||'')],
+      ['Media 90 gg', item.weightedAverage90Days===''?'—':fmt(item.weightedAverage90Days,5)+' '+(item.unit||'')],
+      ['Media storica', item.weightedAverageHistorical===''?'—':fmt(item.weightedAverageHistorical,5)+' '+(item.unit||'')],
+      ['Min storico', item.minHistoricalPrice===''?'—':fmt(item.minHistoricalPrice,5)+' '+(item.unit||'')],
+      ['Max storico', item.maxHistoricalPrice===''?'—':fmt(item.maxHistoricalPrice,5)+' '+(item.unit||'')]
+    ];
+    $('priceDetailKpis').innerHTML = kpis.map(k => `<div class="kpi-card"><small>${esc(k[0])}</small><strong>${esc(k[1])}</strong></div>`).join('');
+
+    const history = item.history || [];
+    $('priceHistoryTable').innerHTML = `<div class="history-row head"><span>Data</span><span>Fornitore</span><span class="history-qty">Quantità</span><strong>Prezzo</strong></div>` +
+      history.slice().reverse().map(h => `<div class="history-row">
+        <span>${esc(formatDateIt(h.date))}</span>
+        <span>${esc(h.supplier||'—')}</span>
+        <span class="history-qty">${h.quantity===''?'—':fmt(h.quantity,3)}</span>
+        <strong>${fmt(h.price,5)}</strong>
+      </div>`).join('');
+
+    renderPriceChart(item);
+    $('priceDetailModal').classList.remove('hidden');
+  }
+
+  function closePriceDetail() {
+    $('priceDetailModal').classList.add('hidden');
+    if (state.priceChart) {
+      state.priceChart.destroy();
+      state.priceChart = null;
+    }
+  }
+
+  function renderPriceChart(item) {
+    if (state.priceChart) state.priceChart.destroy();
+    if (!window.Chart) {
+      toast('Grafico non disponibile. Lo storico resta consultabile sotto.');
+      return;
+    }
+    const history = item.history || [];
+    const ctx = $('priceChart').getContext('2d');
+    state.priceChart = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: history.map(h => formatDateIt(h.date)),
+        datasets: [
+          {
+            label: 'Prezzo reale',
+            data: history.map(h => num(h.price)),
+            borderColor: '#DFA145',
+            backgroundColor: '#DFA145',
+            pointRadius: 4,
+            pointHoverRadius: 6,
+            tension: 0,
+            spanGaps: false
+          },
+          {
+            label: 'Media ponderata 90 gg',
+            data: history.map(h => num(h.rollingAverage90Days)),
+            borderColor: '#8f939b',
+            backgroundColor: '#8f939b',
+            borderDash: [6,4],
+            pointRadius: 0,
+            tension: .2,
+            spanGaps: true
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: {mode:'index', intersect:false},
+        plugins: {
+          legend: {labels:{color:'#f2f2f3'}},
+          tooltip: {
+            callbacks: {
+              label: (ctx) => `${ctx.dataset.label}: ${fmt(ctx.parsed.y,5)} ${item.unit || ''}`
+            }
+          }
+        },
+        scales: {
+          x: {ticks:{color:'#aaaab0'}, grid:{color:'rgba(255,255,255,.06)'}},
+          y: {ticks:{color:'#aaaab0'}, grid:{color:'rgba(255,255,255,.06)'}}
+        }
+      }
+    });
+  }
+
+  function formatDateIt(value) {
+    const s = String(value || '').trim();
+    const m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    return m ? `${m[3]}/${m[2]}/${m[1]}` : s;
+  }
 
   function canonicalUnitClient(value) {
     const raw = String(value || '').trim();
     if (!raw) return '';
     const u = raw.toLowerCase().replace(/\s+/g,'');
     if (['kg','€/kg','€kg'].includes(u)) return '€/kg';
-    if (['l','lt','€/l','€l'].includes(u)) return '€/l';
+    if (['l','lt','€/l','€l'].includes(u)) return '€/kg';
     if (['pz','pz.','pezzo','pezzi','nr','€/pz','€/pezzo','€pz'].includes(u)) return '€/pz';
     if (['ct','cf','conf','confezione','confezioni','€/confezione','€confezione'].includes(u)) return '€/confezione';
     return raw;

@@ -34,7 +34,7 @@
         <button class="menu-card primary" data-nav="upload"><span>＋</span><strong>Nuova fattura</strong><small>Foto o PDF</small></button>
         <button class="menu-card" data-nav="invoices" data-filter="DA_REVISIONARE"><span>✓</span><strong>Da revisionare</strong><small>Righe da confermare</small></button>
         <button class="menu-card" data-nav="invoices"><span>≡</span><strong>Fatture</strong><small>Storico e stati</small></button>
-        <button class="menu-card" data-nav="prices"><span>↗</span><strong>Prezzi</strong><small>Ultimo vs precedente</small></button>
+        <button class="menu-card" data-nav="prices"><span>↗</span><strong>Prezzi</strong><small>Trend, alert e margini</small></button>
       </div>
     </section>
 
@@ -77,12 +77,21 @@
     </section>
 
     <section id="view-prices" class="view">
-      <div class="section-head"><div><h2>Prezzi</h2><p>Ultimo acquisto, precedente e variazione.</p></div></div>
-      <div class="filter-row prices-filter">
-        <input id="priceSearch" type="search" placeholder="Cerca ingrediente">
-        <select id="categoryFilter"><option value="">Tutte le categorie</option></select>
+      <div class="section-head"><div><h2>Price Intelligence</h2><p>Prezzi, trend, alert e impatto sui margini.</p></div></div>
+
+      <div class="intelligence-block">
+        <div class="block-head"><div><h3>Notifiche</h3><p>Ogni variazione di prezzo e cambi di margine da almeno 1 punto.</p></div><span id="notificationCount" class="status-pill">0</span></div>
+        <div id="notificationList" class="stack compact-stack"></div>
       </div>
-      <div id="priceList" class="stack"></div>
+
+      <div class="intelligence-block">
+        <div class="block-head"><div><h3>Ingredienti</h3><p>Tocca un ingrediente per aprire grafico e storico acquisti.</p></div></div>
+        <div class="filter-row prices-filter">
+          <input id="priceSearch" type="search" placeholder="Cerca ingrediente">
+          <select id="categoryFilter"><option value="">Tutte le categorie</option></select>
+        </div>
+        <div id="priceList" class="stack"></div>
+      </div>
     </section>
   </main>
 
@@ -103,9 +112,24 @@
     </div>
   </div>
 
+
+  <div id="priceDetailModal" class="modal-overlay hidden">
+    <div class="modal-card price-detail-card" role="dialog" aria-modal="true" aria-labelledby="priceDetailTitle">
+      <div class="modal-head">
+        <div><div class="eyebrow">PRICE INTELLIGENCE</div><h2 id="priceDetailTitle">Ingrediente</h2><p id="priceDetailSubtitle" class="muted small"></p></div>
+        <button id="priceDetailClose" class="icon-btn" type="button" aria-label="Chiudi">×</button>
+      </div>
+      <div id="priceDetailKpis" class="kpi-grid"></div>
+      <div class="chart-wrap"><canvas id="priceChart"></canvas></div>
+      <h3 class="detail-section-title">Storico acquisti</h3>
+      <div id="priceHistoryTable" class="history-table"></div>
+    </div>
+  </div>
+
   <div id="toast" class="toast"></div>
   <div id="loader" class="loader-overlay hidden"><div class="spinner"></div><p id="loaderText">Elaborazione…</p></div>
 
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.9/dist/chart.umd.min.js"></script>
   <script src="config.js"></script>
   <script src="app.js"></script>
 </body>

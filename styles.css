@@ -110,3 +110,52 @@ main{max-width:760px;margin:0 auto;padding:16px 16px calc(100px + env(safe-area-
   .review-units-grid label span{font-size:12px}
   .review-units-grid input,.review-units-grid select{min-height:46px;height:46px;padding:9px 10px}
 }
+
+
+/* V1.3.0 - Price Intelligence, notifiche e grafici */
+.intelligence-block{margin-top:16px}
+.block-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:10px}
+.block-head h3{margin:0 0 4px;font-size:18px}
+.block-head p{margin:0;color:var(--muted);font-size:12px;line-height:1.4}
+.compact-stack{gap:8px}
+.notification-card{border:1px solid var(--line);background:var(--panel);border-radius:16px;padding:13px;display:grid;grid-template-columns:8px 1fr auto;gap:10px;align-items:start}
+.notification-accent{width:8px;height:100%;min-height:54px;border-radius:999px;background:#777}
+.notification-card.sev-verde .notification-accent{background:#68c78b}
+.notification-card.sev-giallo .notification-accent{background:#d9b64c}
+.notification-card.sev-arancione .notification-accent{background:#df8f45}
+.notification-card.sev-rosso .notification-accent{background:#e46d6d}
+.notification-card.sev-neutro .notification-accent{background:#8a8a91}
+.notification-main h4{margin:0 0 3px;font-size:14px}
+.notification-main p{margin:0;color:var(--muted);font-size:12px;line-height:1.4}
+.notification-value{font-weight:900;font-size:13px;white-space:nowrap}
+.notification-card .ack-btn{grid-column:2 / -1;justify-self:start;border:0;background:transparent;color:var(--gold);font-weight:800;padding:2px 0}
+.price-card{cursor:pointer;transition:transform .15s ease,border-color .15s ease}
+.price-card:active{transform:scale(.992)}
+.price-card.alert-high{border-color:rgba(228,109,109,.5)}
+.price-card.alert-mid{border-color:rgba(223,143,69,.45)}
+.price-card.alert-low{border-color:rgba(217,182,76,.35)}
+.price-card.alert-down{border-color:rgba(104,199,139,.35)}
+.price-submetrics{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
+.price-submetrics .meta{margin:0}
+.modal-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}
+.price-detail-card{width:min(100%,720px);max-height:calc(100vh - 32px);overflow:auto}
+.kpi-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-top:14px}
+.kpi-card{background:var(--panel2);border-radius:13px;padding:11px}
+.kpi-card small{display:block;color:var(--muted);font-size:10px;text-transform:uppercase;margin-bottom:4px}
+.kpi-card strong{font-size:16px}
+.chart-wrap{height:280px;margin-top:16px;background:#111113;border:1px solid var(--line);border-radius:16px;padding:10px}
+.detail-section-title{font-size:16px;margin:18px 0 9px}
+.history-table{display:flex;flex-direction:column;gap:7px}
+.history-row{display:grid;grid-template-columns:82px 1fr 90px 90px;gap:8px;align-items:center;padding:9px 10px;background:var(--panel2);border-radius:11px;font-size:12px}
+.history-row.head{color:var(--muted);font-size:10px;text-transform:uppercase;background:transparent;padding-top:0;padding-bottom:2px}
+.history-row strong{text-align:right}
+@media(max-width:520px){
+  .notification-card{grid-template-columns:7px 1fr}
+  .notification-value{grid-column:2}
+  .notification-card .ack-btn{grid-column:2}
+  .kpi-grid{grid-template-columns:1fr 1fr}
+  .chart-wrap{height:240px}
+  .history-row{grid-template-columns:68px 1fr 78px}
+  .history-row .history-qty{display:none}
+  .price-detail-card{padding:16px}
+}
