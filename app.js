@@ -332,9 +332,11 @@
     });
 
     el.querySelector('.confirm-btn').addEventListener('click', async () => {
+      const btn = el.querySelector('.confirm-btn');
       try {
+        btn.disabled = true;
         const ingredientId = ingredientSelect.value;
-        await api('update_row', {
+        const r = await api('confirm_row', {
           rowId: card.rowId,
           ingredientId,
           documentQuantity: el.querySelector('.document-qty-input').value,
@@ -343,12 +345,16 @@
           comparisonUnit: trackingUnitSelect.value,
           saveTrackingUnitAsDefault: true
         });
-        await api('confirm_row', {rowId: card.rowId, ingredientId});
-        await refreshCurrentReview();
-        state.ingredients = [];
-        await ensureCatalog();
-        toast('Riga confermata');
-      } catch(e) { toast(e.message); }
+
+        // La risposta contiene già la revisione aggiornata: niente seconda chiamata API.
+        if (r.review) renderReview(r.review);
+        else await refreshCurrentReview();
+
+        toast(r.conversionLearned ? 'Riga confermata · conversione memorizzata' : 'Riga confermata');
+      } catch(e) {
+        btn.disabled = false;
+        toast(e.message);
+      }
     });
 
     el.querySelector('.exclude-btn').addEventListener('click', async () => {
