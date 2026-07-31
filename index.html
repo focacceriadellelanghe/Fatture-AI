@@ -26,10 +26,11 @@
   <main id="app">
     <section id="view-home" class="view active">
       <div class="hero-card">
-        <span class="badge">V1</span>
+        <span class="badge">V1.4</span>
         <h2>Controllo prezzi da fattura</h2>
         <p>Carica, revisiona e registra i prezzi normalizzati in un unico flusso.</p>
       </div>
+      <div id="homeStatus" class="home-status-grid"></div>
       <div class="menu-grid">
         <button class="menu-card primary" data-nav="upload"><span>＋</span><strong>Nuova fattura</strong><small>Foto o PDF</small></button>
         <button class="menu-card" data-nav="invoices" data-filter="DA_REVISIONARE"><span>✓</span><strong>Da revisionare</strong><small>Righe da confermare</small></button>
@@ -66,6 +67,7 @@
       <div class="filter-row">
         <select id="invoiceStatusFilter">
           <option value="">Tutti gli stati</option>
+          <option value="RICEVUTA">Ricevute / in coda</option>
           <option value="DA_REVISIONARE">Da revisionare</option>
           <option value="ANALISI_IN_CORSO">In analisi</option>
           <option value="COMPLETATA">Completate</option>
@@ -101,8 +103,10 @@
       <h2 id="ingredientModalTitle">Nuovo ingrediente / prodotto</h2>
       <form id="ingredientModalForm" class="stack">
         <label class="field"><span>Nome</span><input id="ingredientModalName" type="text" required></label>
-        <label class="field"><span>Categoria</span><input id="ingredientModalCategory" type="text"></label>
-        <label class="field"><span>Sottocategoria</span><input id="ingredientModalSubcategory" type="text"></label>
+        <label class="field"><span>Categoria</span><select id="ingredientModalCategory" required></select></label>
+        <label id="ingredientModalNewCategoryWrap" class="field hidden"><span>Nuova categoria</span><input id="ingredientModalNewCategory" type="text" autocomplete="off"></label>
+        <label class="field"><span>Sottocategoria</span><select id="ingredientModalSubcategory" required></select></label>
+        <label id="ingredientModalNewSubcategoryWrap" class="field hidden"><span>Nuova sottocategoria</span><input id="ingredientModalNewSubcategory" type="text" autocomplete="off"></label>
         <label class="field"><span>Unità da tracciare</span><select id="ingredientModalUnit" required></select></label>
         <div class="review-actions">
           <button id="ingredientModalCancel" class="btn secondary" type="button">Annulla</button>

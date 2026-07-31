@@ -2,7 +2,7 @@
   'use strict';
 
   const cfg = window.FCI_CONFIG || {};
-  const state = { ingredients: [], units: [], currentInvoiceId: '', allPrices: [], notifications: [], uploadGroups: [], newIngredientRowId: '', priceChart: null };
+  const state = { ingredients: [], units: [], categories: [], subcategoriesByCategory: {}, currentInvoiceId: '', allPrices: [], notifications: [], uploadGroups: [], newIngredientRowId: '', priceChart: null };
   const $ = (id) => document.getElementById(id);
   const qsa = (sel) => Array.from(document.querySelectorAll(sel));
 
@@ -12,9 +12,9 @@
     qsa('[data-nav]').forEach(btn => btn.addEventListener('click', () => {
       const filter = btn.dataset.filter || '';
       if (filter) $('invoiceStatusFilter').value = filter;
-      navigate(btn.dataset.nav);
+      navigate(btn.dataset.nav, {}, true);
     }));
-    $('homeBtn').addEventListener('click', () => navigate('home'));
+    $('homeBtn').addEventListener('click', () => navigate('home', {}, true));
     $('addInvoiceBtn').addEventListener('click', () => addUploadGroup());
     $('uploadForm').addEventListener('submit', submitUpload);
     $('refreshInvoicesBtn').addEventListener('click', loadInvoices);
@@ -24,31 +24,110 @@
     $('priceSearch').addEventListener('input', renderPriceFilter);
     $('categoryFilter').addEventListener('change', renderPriceFilter);
     $('priceDetailClose').addEventListener('click', closePriceDetail);
-    $('priceDetailModal').addEventListener('click', (e) => { if (e.target.id === 'priceDetailModal') closePriceDetail(); });
+    $('priceDetailModal').addEventListener('click', (e) => {
+      if (e.target.id === 'priceDetailModal') closePriceDetail();
+    });
     $('ingredientModalCancel').addEventListener('click', closeIngredientModal);
     $('ingredientModalForm').addEventListener('submit', submitNewIngredient);
+    $('ingredientModalCategory').addEventListener('change', handleCategorySelection);
+    $('ingredientModalSubcategory').addEventListener('change', handleSubcategorySelection);
     $('ingredientModalUnit').addEventListener('change', async (e) => {
       if (e.target.value === '__NEW__') {
         const unit = await createUnitFromPrompt();
-        if (unit) {
-          populateUnitSelect($('ingredientModalUnit'), unit);
-        } else {
-          e.target.value = '';
-        }
+        if (unit) populateUnitSelect($('ingredientModalUnit'), unit);
+        else e.target.value = '';
       }
     });
+
+    window.addEventListener('popstate', () => applyRouteFromUrl());
     addUploadGroup();
+    applyRouteFromUrl();
   }
 
-  async function navigate(view) {
+  async function navigate(view, params = {}, updateUrl = true) {
+    const target = $('view-' + view) ? view : 'home';
     qsa('.view').forEach(v => v.classList.remove('active'));
-    $('view-' + view).classList.add('active');
+    $('view-' + target).classList.add('active');
     window.scrollTo({top: 0, behavior: 'instant'});
-    if (view === 'invoices') await loadInvoices();
-    if (view === 'prices') await loadPrices();
+
+    if (updateUrl) writeRoute(target, params);
+
+    if (target === 'home') await loadHomeStatus();
+    if (target === 'invoices') {
+      if (params.status !== undefined) $('invoiceStatusFilter').value = params.status;
+      await loadInvoices();
+      if (params.invoiceId) {
+        const invoice = (await api('list_invoices',{limit:200})).invoices
+          .find(x => x.id === params.invoiceId);
+        if (invoice && invoice.status === 'DA_REVISIONARE') await openReview(params.invoiceId);
+      }
+    }
+    if (target === 'review' && params.invoiceId) await openReview(params.invoiceId);
+    if (target === 'prices') {
+      await loadPrices();
+      if (params.ingredientId) openPriceDetail(params.ingredientId);
+      if (params.notificationId) {
+        const card = document.querySelector(`[data-notification-id="${cssEsc(params.notificationId)}"]`);
+        if (card) card.scrollIntoView({behavior:'smooth', block:'center'});
+      }
+    }
   }
 
-  async function api(action, data = {}) {
+  
+  function readRoute() {
+    const p = new URLSearchParams(window.location.search);
+    return {
+      view: p.get('view') || 'home',
+      status: p.get('status') || '',
+      invoiceId: p.get('invoice') || '',
+      ingredientId: p.get('ingredient') || '',
+      notificationId: p.get('notification') || ''
+    };
+  }
+
+  function writeRoute(view, params = {}) {
+    const p = new URLSearchParams();
+    if (view && view !== 'home') p.set('view', view);
+    if (params.status) p.set('status', params.status);
+    if (params.invoiceId) p.set('invoice', params.invoiceId);
+    if (params.ingredientId) p.set('ingredient', params.ingredientId);
+    if (params.notificationId) p.set('notification', params.notificationId);
+    const query = p.toString();
+    history.pushState({}, '', window.location.pathname + (query ? '?' + query : ''));
+  }
+
+  async function applyRouteFromUrl() {
+    const route = readRoute();
+    await navigate(route.view, route, false);
+  }
+
+  async function loadHomeStatus() {
+    const box = $('homeStatus');
+    if (!box) return;
+    try {
+      const r = await api('get_app_status');
+      const c = r.counts || {};
+      const active = Number(c.received || 0) + Number(c.analyzing || 0);
+      box.innerHTML = `
+        <button class="home-status-item" data-home-status="ANALISI_IN_CORSO">
+          <strong>${active}</strong><span>In elaborazione</span>
+        </button>
+        <button class="home-status-item" data-home-status="DA_REVISIONARE">
+          <strong>${Number(c.ready || 0)}</strong><span>Da revisionare</span>
+        </button>
+        <button class="home-status-item" data-home-status="ERRORE_OCR">
+          <strong>${Number(c.errors || 0)}</strong><span>Con errore</span>
+        </button>`;
+      qsa('[data-home-status]').forEach(btn => btn.addEventListener('click', () => {
+        $('invoiceStatusFilter').value = btn.dataset.homeStatus;
+        navigate('invoices', {status: btn.dataset.homeStatus}, true);
+      }));
+    } catch (_) {
+      box.innerHTML = '';
+    }
+  }
+
+async function api(action, data = {}) {
     const url = cfg.APP_SCRIPT_URL;
     if (!url || url.includes('INCOLLA_QUI')) throw new Error('Configura APP_SCRIPT_URL in config.js');
     const res = await fetch(url, {
@@ -143,58 +222,87 @@
       const g = state.uploadGroups.find(x => x.id === card.dataset.uploadId);
       if (g) captureGroupFields(card, g);
     });
+
     const groups = state.uploadGroups.filter(g => g.files.length);
     if (!groups.length) return toast('Aggiungi almeno una fattura');
 
     $('uploadStatus').classList.add('hidden');
-    const results = [];
+    const accepted = [];
+    const failed = [];
+
     try {
       for (let gi = 0; gi < groups.length; gi++) {
         const g = groups[gi];
-        setLoader(true, `Fattura ${gi + 1} di ${groups.length} · preparazione file…`);
-        const prepared = [];
-        let totalBytes = 0;
-        for (let fi = 0; fi < g.files.length; fi++) {
-          const original = g.files[fi];
-          const file = original.type.startsWith('image/') ? await compressImage(original) : original;
-          if (file.size > 12 * 1024 * 1024) throw new Error(`${file.name}: file oltre 12 MB`);
-          totalBytes += file.size;
-          if (totalBytes > 30 * 1024 * 1024) throw new Error(`Fattura ${gi + 1}: dimensione complessiva oltre 30 MB`);
-          prepared.push({
-            fileName: file.name,
-            mimeType: file.type || original.type,
-            base64Data: await fileToBase64(file)
+        setLoader(true, `Invio fattura ${gi + 1} di ${groups.length}…`);
+        try {
+          const prepared = [];
+          let totalBytes = 0;
+
+          for (let fi = 0; fi < g.files.length; fi++) {
+            const original = g.files[fi];
+            const file = original.type.startsWith('image/')
+              ? await compressImage(original)
+              : original;
+
+            if (file.size > 12 * 1024 * 1024) {
+              throw new Error(`${file.name}: file oltre 12 MB`);
+            }
+            totalBytes += file.size;
+            if (totalBytes > 30 * 1024 * 1024) {
+              throw new Error(`Fattura ${gi + 1}: dimensione complessiva oltre 30 MB`);
+            }
+
+            prepared.push({
+              fileName: file.name,
+              mimeType: file.type || original.type,
+              base64Data: await fileToBase64(file)
+            });
+          }
+
+          const result = await api('upload_group_and_analyze', {
+            files: prepared,
+            documentDate: g.documentDate || '',
+            supplier: g.supplier || '',
+            invoiceNumber: g.invoiceNumber || '',
+            total: g.total || '',
+            clientTimestamp: new Date().toISOString()
           });
+          accepted.push(result);
+        } catch (err) {
+          failed.push({index: gi + 1, message: err.message});
         }
-        setLoader(true, `Fattura ${gi + 1} di ${groups.length} · caricamento e analisi Gemini…`);
-        const result = await api('upload_group_and_analyze', {
-          files: prepared,
-          documentDate: g.documentDate || '',
-          supplier: g.supplier || '',
-          invoiceNumber: g.invoiceNumber || '',
-          total: g.total || ''
-        });
-        results.push(result);
       }
 
-      if (results.length === 1) {
-        state.currentInvoiceId = results[0].invoiceId;
-        await ensureCatalog();
-        renderReview(results[0].review);
-        await navigate('review');
-        toast('OCR completato. Controlla le righe.');
-      } else {
-        $('invoiceStatusFilter').value = 'DA_REVISIONARE';
-        await navigate('invoices');
-        toast(`${results.length} fatture analizzate. Aprile una alla volta per la revisione.`);
-      }
       state.uploadGroups = [];
       addUploadGroup();
+
+      if (accepted.length) {
+        const msg = accepted.length === 1
+          ? 'Fattura ricevuta. Analisi avviata. Puoi chiudere l’app.'
+          : `${accepted.length} fatture ricevute. Analisi avviata. Puoi chiudere l’app.`;
+
+        $('uploadStatus').classList.remove('hidden');
+        $('uploadStatus').innerHTML = `<strong>${esc(msg)}</strong>${
+          failed.length
+            ? `<br><span class="muted">${failed.length} invii non riusciti.</span>`
+            : ''
+        }`;
+        toast(msg);
+        $('invoiceStatusFilter').value = '';
+        await navigate('invoices', {}, true);
+      }
+
+      if (!accepted.length && failed.length) {
+        throw new Error(failed.map(x => `Fattura ${x.index}: ${x.message}`).join(' · '));
+      }
     } catch (err) {
       $('uploadStatus').classList.remove('hidden');
-      $('uploadStatus').innerHTML = `<strong>Errore</strong><br><span class="muted">${esc(err.message)}</span>`;
+      $('uploadStatus').innerHTML =
+        `<strong>Errore</strong><br><span class="muted">${esc(err.message)}</span>`;
       toast(err.message);
-    } finally { setLoader(false); }
+    } finally {
+      setLoader(false);
+    }
   }
 
   async function compressImage(file) {
@@ -226,6 +334,8 @@
     if (!state.ingredients.length) {
       const r = await api('get_ingredients');
       state.ingredients = r.ingredients || [];
+      state.categories = r.categories || [];
+      state.subcategoriesByCategory = r.subcategoriesByCategory || {};
     }
     if (!state.units.length) {
       const r = await api('get_tracking_units');
@@ -410,17 +520,53 @@
 
 
   async function loadInvoices() {
-    const list = $('invoiceList'); list.innerHTML = '<div class="status-card">Caricamento…</div>';
+    const list = $('invoiceList');
+    list.innerHTML = '<div class="status-card">Caricamento…</div>';
     try {
-      const r = await api('list_invoices',{status:$('invoiceStatusFilter').value,limit:100});
-      list.innerHTML = (r.invoices||[]).map(inv => `<article class="invoice-card">
-        <div class="invoice-head"><div><h3>${esc(inv.supplier || 'Fornitore non indicato')}</h3><div class="muted small">${esc(inv.documentDate)}${inv.invoiceNumber?' · Doc. '+esc(inv.invoiceNumber):''}</div></div><span class="status-pill">${esc(inv.status)}</span></div>
-        <div class="muted small" style="margin-top:8px">${esc(inv.id)}${inv.total!==''?' · '+money(inv.total):''}</div>
-        ${inv.notes?`<div class="muted small" style="margin-top:6px">${esc(inv.notes)}</div>`:''}
-        ${inv.status==='DA_REVISIONARE'||inv.status==='ERRORE_OCR'?`<button class="btn primary" data-open-review="${esc(inv.id)}">${inv.status==='ERRORE_OCR'?'Apri dettagli':'Revisiona'}</button>`:''}
-      </article>`).join('') || '<div class="status-card">Nessuna fattura trovata.</div>';
-      qsa('[data-open-review]').forEach(b => b.addEventListener('click',()=>openReview(b.dataset.openReview)));
-    } catch(e){list.innerHTML=`<div class="status-card">${esc(e.message)}</div>`}
+      const r = await api('list_invoices',{
+        status:$('invoiceStatusFilter').value,
+        limit:100
+      });
+      list.innerHTML = (r.invoices || []).map(inv => {
+        const canReview = inv.status === 'DA_REVISIONARE';
+        const isError = inv.status === 'ERRORE_OCR';
+        return `<article class="invoice-card" data-invoice-id="${esc(inv.id)}">
+          <div class="invoice-head">
+            <div>
+              <h3>${esc(inv.supplier || 'Fornitore non ancora riconosciuto')}</h3>
+              <div class="muted small">${esc(inv.documentDate)}${
+                inv.invoiceNumber ? ' · Doc. ' + esc(inv.invoiceNumber) : ''
+              }</div>
+            </div>
+            <span class="status-pill">${esc(inv.status)}</span>
+          </div>
+          <div class="muted small" style="margin-top:8px">${esc(inv.id)}${
+            inv.total !== '' ? ' · ' + money(inv.total) : ''
+          }</div>
+          ${inv.notes ? `<div class="muted small" style="margin-top:6px">${esc(inv.notes)}</div>` : ''}
+          ${canReview
+            ? `<button class="btn primary" data-open-review="${esc(inv.id)}">Revisiona</button>`
+            : ''}
+          ${isError
+            ? `<button class="btn secondary" data-open-error="${esc(inv.id)}">Dettagli errore</button>`
+            : ''}
+        </article>`;
+      }).join('') || '<div class="status-card">Nessuna fattura trovata.</div>';
+
+      qsa('[data-open-review]').forEach(b =>
+        b.addEventListener('click', () => openReview(b.dataset.openReview))
+      );
+      qsa('[data-open-error]').forEach(b =>
+        b.addEventListener('click', () => {
+          const card = b.closest('.invoice-card');
+          const note = card ? card.querySelector('.muted.small:last-of-type') : null;
+          toast(note ? note.textContent : 'Controlla le note della fattura');
+        })
+      );
+      if ($('view-home').classList.contains('active')) await loadHomeStatus();
+    } catch(e) {
+      list.innerHTML = `<div class="status-card">${esc(e.message)}</div>`;
+    }
   }
 
   async function loadPrices() {
@@ -445,41 +591,90 @@
     $('notificationCount').textContent = rows.length;
     $('notificationList').innerHTML = rows.map(n => {
       const color = String(n.color || 'NEUTRO').toLowerCase();
-      const isMargin = String(n.type || '').toUpperCase() === 'MARGINE';
-      const value = isMargin
-        ? `${num(n.changePoints) > 0 ? '+' : ''}${fmt(n.changePoints,2)} pt`
-        : `${num(n.changePercent) > 0 ? '+' : ''}${fmt(n.changePercent,2)}%`;
-      const detail = isMargin
-        ? `${fmt(n.previousValue,2)}% → ${fmt(n.newValue,2)}%`
-        : `${fmt(n.previousValue,5)} → ${fmt(n.newValue,5)} ${esc(n.unit || '')}`;
-      return `<article class="notification-card sev-${esc(color)}" data-notification-id="${esc(n.id)}">
+      const type = String(n.type || '').toUpperCase();
+      const isMargin = type === 'MARGINE';
+      const isInvoice = type === 'FATTURE_PRONTE' || type === 'ERRORE_FATTURA';
+
+      let value = '';
+      let detail = '';
+      if (isInvoice) {
+        value = n.newValue === '' ? '' : fmt(n.newValue,0);
+        detail = n.eventDate ? esc(formatDateIt(n.eventDate)) : '';
+      } else if (isMargin) {
+        value = `${num(n.changePoints) > 0 ? '+' : ''}${fmt(n.changePoints,2)} pt`;
+        detail = `${fmt(n.previousValue,2)}% → ${fmt(n.newValue,2)}%`;
+      } else {
+        value = `${num(n.changePercent) > 0 ? '+' : ''}${fmt(n.changePercent,2)}%`;
+        detail = `${fmt(n.previousValue,5)} → ${fmt(n.newValue,5)} ${esc(n.unit || '')}`;
+      }
+
+      return `<article class="notification-card sev-${esc(color)} clickable-notification"
+          data-notification-id="${esc(n.id)}">
         <div class="notification-accent"></div>
         <div class="notification-main">
           <h4>${esc(n.item || n.type)}</h4>
           <p>${esc(n.detail || '')}</p>
-          <p>${detail}${n.eventDate ? ' · '+esc(formatDateIt(n.eventDate)) : ''}</p>
+          ${detail ? `<p>${detail}</p>` : ''}
         </div>
-        <div class="notification-value">${value}</div>
+        ${value ? `<div class="notification-value">${value}</div>` : ''}
         <button class="ack-btn" type="button">Segna letta</button>
       </article>`;
     }).join('') || '<div class="status-card">Nessuna nuova notifica.</div>';
 
-    qsa('[data-notification-id] .ack-btn').forEach(btn => btn.addEventListener('click', async () => {
-      const card = btn.closest('[data-notification-id]');
-      const id = card.dataset.notificationId;
-      btn.disabled = true;
-      try {
-        await api('acknowledge_notification', {notificationId:id});
-        state.notifications = state.notifications.filter(n => n.id !== id);
-        renderNotifications();
-      } catch(e) {
-        btn.disabled = false;
-        toast(e.message);
-      }
-    }));
+    qsa('[data-notification-id]').forEach(card => {
+      card.addEventListener('click', e => {
+        if (e.target.closest('.ack-btn')) return;
+        const n = state.notifications.find(x => x.id === card.dataset.notificationId);
+        if (n) openNotificationTarget(n);
+      });
+    });
+
+    qsa('[data-notification-id] .ack-btn').forEach(btn =>
+      btn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const card = btn.closest('[data-notification-id]');
+        const id = card.dataset.notificationId;
+        btn.disabled = true;
+        try {
+          await api('acknowledge_notification', {notificationId:id});
+          state.notifications = state.notifications.filter(n => n.id !== id);
+          renderNotifications();
+        } catch(err) {
+          btn.disabled = false;
+          toast(err.message);
+        }
+      })
+    );
   }
 
-  function renderPriceFilter() {
+  
+  async function openNotificationTarget(n) {
+    const type = String(n.type || '').toUpperCase();
+    if (type === 'FATTURE_PRONTE') {
+      if (n.invoiceId) {
+        await navigate('review', {invoiceId:n.invoiceId}, true);
+      } else {
+        $('invoiceStatusFilter').value = 'DA_REVISIONARE';
+        await navigate('invoices', {status:'DA_REVISIONARE'}, true);
+      }
+      return;
+    }
+    if (type === 'ERRORE_FATTURA') {
+      $('invoiceStatusFilter').value = 'ERRORE_OCR';
+      await navigate('invoices', {
+        status:'ERRORE_OCR',
+        invoiceId:n.invoiceId || ''
+      }, true);
+      return;
+    }
+    if (type === 'PREZZO' && n.ingredientId) {
+      await navigate('prices', {ingredientId:n.ingredientId}, true);
+      return;
+    }
+    await navigate('prices', {notificationId:n.id}, true);
+  }
+
+function renderPriceFilter() {
     const s = $('priceSearch').value.trim().toLowerCase(), c = $('categoryFilter').value;
     const items = state.allPrices.filter(x => (!s || x.ingredient.toLowerCase().includes(s)) && (!c || x.category===c));
     $('priceList').innerHTML = items.map(x => {
@@ -655,11 +850,64 @@
     }
   }
 
-  function openIngredientModal(card) {
+  
+  function populateCategorySelect(selected='') {
+    const values = [...state.categories];
+    if (selected && !values.includes(selected)) values.push(selected);
+    $('ingredientModalCategory').innerHTML =
+      '<option value="">— Seleziona categoria —</option>' +
+      values.sort((a,b)=>a.localeCompare(b,'it'))
+        .map(v => `<option value="${esc(v)}" ${v===selected?'selected':''}>${esc(v)}</option>`)
+        .join('') +
+      '<option value="__NEW__">＋ Aggiungi nuova categoria</option>';
+  }
+
+  function populateSubcategorySelect(category, selected='') {
+    const values = [...(state.subcategoriesByCategory[category] || [])];
+    if (selected && !values.includes(selected)) values.push(selected);
+    $('ingredientModalSubcategory').innerHTML =
+      '<option value="">— Seleziona sottocategoria —</option>' +
+      values.sort((a,b)=>a.localeCompare(b,'it'))
+        .map(v => `<option value="${esc(v)}" ${v===selected?'selected':''}>${esc(v)}</option>`)
+        .join('') +
+      '<option value="__NEW__">＋ Aggiungi nuova sottocategoria</option>';
+  }
+
+  function handleCategorySelection() {
+    const select = $('ingredientModalCategory');
+    const isNew = select.value === '__NEW__';
+    $('ingredientModalNewCategoryWrap').classList.toggle('hidden', !isNew);
+    const category = isNew ? $('ingredientModalNewCategory').value.trim() : select.value;
+    populateSubcategorySelect(category, '');
+    $('ingredientModalNewSubcategoryWrap').classList.add('hidden');
+  }
+
+  function handleSubcategorySelection() {
+    const isNew = $('ingredientModalSubcategory').value === '__NEW__';
+    $('ingredientModalNewSubcategoryWrap').classList.toggle('hidden', !isNew);
+  }
+
+  function selectedCategoryValue() {
+    return $('ingredientModalCategory').value === '__NEW__'
+      ? $('ingredientModalNewCategory').value.trim()
+      : $('ingredientModalCategory').value;
+  }
+
+  function selectedSubcategoryValue() {
+    return $('ingredientModalSubcategory').value === '__NEW__'
+      ? $('ingredientModalNewSubcategory').value.trim()
+      : $('ingredientModalSubcategory').value;
+  }
+
+function openIngredientModal(card) {
     $('ingredientModalTitle').textContent = 'Nuovo ingrediente / prodotto';
     $('ingredientModalName').value = '';
-    $('ingredientModalCategory').value = '';
-    $('ingredientModalSubcategory').value = '';
+    populateCategorySelect('');
+    populateSubcategorySelect('', '');
+    $('ingredientModalNewCategoryWrap').classList.add('hidden');
+    $('ingredientModalNewSubcategoryWrap').classList.add('hidden');
+    $('ingredientModalNewCategory').value = '';
+    $('ingredientModalNewSubcategory').value = '';
     populateUnitSelect($('ingredientModalUnit'), '');
     $('ingredientModal').classList.remove('hidden');
     setTimeout(() => $('ingredientModalName').focus(), 50);
@@ -678,15 +926,26 @@
       if (!unit) return;
       populateUnitSelect(unitSelect, unit);
     }
+
+    const category = selectedCategoryValue();
+    const subcategory = selectedSubcategoryValue();
+    if (!category) return toast('Seleziona o inserisci una categoria');
+    if (!subcategory) return toast('Seleziona o inserisci una sottocategoria');
+
     try {
       const r = await api('create_ingredient', {
         name: $('ingredientModalName').value.trim(),
-        category: $('ingredientModalCategory').value.trim(),
-        subcategory: $('ingredientModalSubcategory').value.trim(),
+        category,
+        subcategory,
         unit: unitSelect.value
       });
+
       state.ingredients.push(r.ingredient);
       state.ingredients.sort((a,b)=>a.name.localeCompare(b.name,'it'));
+      state.categories = r.categories || state.categories;
+      state.subcategoriesByCategory =
+        r.subcategoriesByCategory || state.subcategoriesByCategory;
+
       const rowId = state.newIngredientRowId;
       closeIngredientModal();
       const el = document.querySelector(`[data-row-id="${cssEsc(rowId)}"]`);
@@ -694,14 +953,18 @@
         const select = el.querySelector('.ingredient-select');
         const opt = document.createElement('option');
         opt.value = r.ingredient.id;
-        opt.textContent = `${r.ingredient.name}${r.ingredient.category?' · '+r.ingredient.category:''}`;
+        opt.textContent =
+          `${r.ingredient.name}${r.ingredient.category ? ' · ' + r.ingredient.category : ''}`;
         select.appendChild(opt);
         select.value = r.ingredient.id;
-        ensureOptionAndSelect(el.querySelector('.tracking-unit-select'), r.ingredient.unit);
+        ensureOptionAndSelect(
+          el.querySelector('.tracking-unit-select'),
+          r.ingredient.unit
+        );
       }
       toast(`${r.ingredient.id} creato`);
-    } catch(e) {
-      toast(e.message);
+    } catch(err) {
+      toast(err.message);
     }
   }
 
