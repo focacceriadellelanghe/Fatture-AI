@@ -12,7 +12,7 @@
   <link rel="icon" href="favicon.ico">
   <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
   <link rel="manifest" href="site.webmanifest">
-  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="styles.css?v=1.4.3">
 </head>
 <body>
   <header class="topbar">
@@ -26,7 +26,7 @@
   <main id="app">
     <section id="view-home" class="view active">
       <div class="hero-card">
-        <span class="badge">V1.4.2</span>
+        <span class="badge">V1.4.3</span>
         <h2>Controllo prezzi da fattura</h2>
         <p>Carica, revisiona e registra i prezzi normalizzati in un unico flusso.</p>
       </div>
@@ -57,8 +57,8 @@
       <div id="reviewSummary" class="summary-strip"></div>
       <div id="reviewRows" class="stack"></div>
       <div class="sticky-actions">
-        <button id="confirmAllBtn" class="btn secondary">Conferma valide</button>
-        <button id="finalizeBtn" class="btn primary">Finalizza fattura</button>
+        <button id="confirmAllBtn" class="btn secondary" type="button">Conferma valide</button>
+        <button id="finalizeBtn" class="btn primary" type="button">Finalizza fattura</button>
       </div>
     </section>
 
@@ -73,19 +73,17 @@
           <option value="COMPLETATA">Completate</option>
           <option value="ERRORE_OCR">Errore OCR</option>
         </select>
-        <button id="refreshInvoicesBtn" class="btn secondary compact">Aggiorna</button>
+        <button id="refreshInvoicesBtn" class="btn secondary compact" type="button">Aggiorna</button>
       </div>
       <div id="invoiceList" class="stack"></div>
     </section>
 
     <section id="view-prices" class="view">
       <div class="section-head"><div><h2>Price Intelligence</h2><p>Prezzi, trend, alert e impatto sui margini.</p></div></div>
-
       <div class="intelligence-block">
         <div class="block-head"><div><h3>Notifiche</h3><p>Ogni variazione di prezzo e cambi di margine da almeno 1 punto.</p></div><span id="notificationCount" class="status-pill">0</span></div>
         <div id="notificationList" class="stack compact-stack"></div>
       </div>
-
       <div class="intelligence-block">
         <div class="block-head"><div><h3>Ingredienti</h3><p>Tocca un ingrediente per aprire grafico e storico acquisti.</p></div></div>
         <div class="filter-row prices-filter">
@@ -132,7 +130,7 @@
   <div id="loader" class="loader-overlay hidden"><div class="spinner"></div><p id="loaderText">Elaborazione…</p></div>
 
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.9/dist/chart.umd.min.js"></script>
-  <script src="config.js?v=1.4.2"></script>
-  <script src="app.js?v=1.4.2"></script>
+  <script src="config.js?v=1.4.3"></script>
+  <script src="app.js?v=1.4.3"></script>
 </body>
 </html>
