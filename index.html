@@ -2,537 +2,137 @@
 <html lang="it">
 <head>
   <meta charset="utf-8">
-
-  <meta
-    name="viewport"
-    content="width=device-width,initial-scale=1,viewport-fit=cover"
-  >
-
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#111111">
-
-  <meta
-    name="apple-mobile-web-app-capable"
-    content="yes"
-  >
-
-  <meta
-    name="apple-mobile-web-app-status-bar-style"
-    content="black-translucent"
-  >
-
-  <meta
-    name="apple-mobile-web-app-title"
-    content="Fatture AI"
-  >
-
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Fatture AI">
   <title>Food Cost Intelligence</title>
-
-  <link
-    rel="icon"
-    type="image/png"
-    sizes="32x32"
-    href="favicon-32x32.png"
-  >
-
-  <link
-    rel="icon"
-    href="favicon.ico"
-  >
-
-  <link
-    rel="apple-touch-icon"
-    sizes="180x180"
-    href="apple-touch-icon.png"
-  >
-
-  <link
-    rel="manifest"
-    href="site.webmanifest"
-  >
-
-  <link
-    rel="stylesheet"
-    href="styles.css"
-  >
+  <link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png">
+  <link rel="icon" href="favicon.ico">
+  <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
+  <link rel="manifest" href="site.webmanifest">
+  <link rel="stylesheet" href="styles.css">
 </head>
-
 <body>
   <header class="topbar">
     <div>
-      <div class="eyebrow">
-        FOCACCERIA DELLE LANGHE
-      </div>
-
+      <div class="eyebrow">FOCACCERIA DELLE LANGHE</div>
       <h1>Food Cost Intelligence</h1>
     </div>
-
-    <button
-      id="homeBtn"
-      class="icon-btn"
-      aria-label="Home"
-    >
-      ⌂
-    </button>
+    <button id="homeBtn" class="icon-btn" aria-label="Home">⌂</button>
   </header>
 
   <main id="app">
-    <section
-      id="view-home"
-      class="view active"
-    >
+    <section id="view-home" class="view active">
       <div class="hero-card">
-        <span class="badge">V1.4.1</span>
-
+        <span class="badge">V1.4.2</span>
         <h2>Controllo prezzi da fattura</h2>
-
-        <p>
-          Carica, revisiona e registra i prezzi
-          normalizzati in un unico flusso.
-        </p>
+        <p>Carica, revisiona e registra i prezzi normalizzati in un unico flusso.</p>
       </div>
-
-      <div
-        id="homeStatus"
-        class="home-status-grid"
-      ></div>
-
+      <div id="homeStatus" class="home-status-grid"></div>
       <div class="menu-grid">
-        <button
-          class="menu-card primary"
-          data-nav="upload"
-        >
-          <span>＋</span>
-          <strong>Nuova fattura</strong>
-          <small>Foto o PDF</small>
-        </button>
-
-        <button
-          class="menu-card"
-          data-nav="invoices"
-          data-filter="DA_REVISIONARE"
-        >
-          <span>✓</span>
-          <strong>Da revisionare</strong>
-          <small>Righe da confermare</small>
-        </button>
-
-        <button
-          class="menu-card"
-          data-nav="invoices"
-        >
-          <span>≡</span>
-          <strong>Fatture</strong>
-          <small>Storico e stati</small>
-        </button>
-
-        <button
-          class="menu-card"
-          data-nav="prices"
-        >
-          <span>↗</span>
-          <strong>Prezzi</strong>
-          <small>Trend, alert e margini</small>
-        </button>
+        <button class="menu-card primary" data-nav="upload"><span>＋</span><strong>Nuova fattura</strong><small>Foto o PDF</small></button>
+        <button class="menu-card" data-nav="invoices" data-filter="DA_REVISIONARE"><span>✓</span><strong>Da revisionare</strong><small>Righe da confermare</small></button>
+        <button class="menu-card" data-nav="invoices"><span>≡</span><strong>Fatture</strong><small>Storico e stati</small></button>
+        <button class="menu-card" data-nav="prices"><span>↗</span><strong>Prezzi</strong><small>Trend, alert e margini</small></button>
       </div>
     </section>
 
-    <section
-      id="view-upload"
-      class="view"
-    >
-      <div class="section-head">
-        <div>
-          <h2>Carica fatture</h2>
-
-          <p>
-            Ogni riquadro è una fattura. Puoi aggiungere
-            più pagine alla stessa fattura e più fatture
-            nello stesso invio.
-          </p>
-        </div>
-      </div>
-
-      <form
-        id="uploadForm"
-        class="stack"
-      >
-        <div
-          id="invoiceBatch"
-          class="stack"
-        ></div>
-
-        <button
-          id="addInvoiceBtn"
-          class="btn secondary wide"
-          type="button"
-        >
-          ＋ Aggiungi un'altra fattura
-        </button>
-
-        <button
-          class="btn primary wide"
-          type="submit"
-        >
-          Carica e analizza tutto
-        </button>
+    <section id="view-upload" class="view">
+      <div class="section-head"><div><h2>Carica fatture</h2><p>Ogni riquadro è una fattura. Puoi aggiungere più pagine alla stessa fattura e più fatture nello stesso invio.</p></div></div>
+      <form id="uploadForm" class="stack">
+        <div id="invoiceBatch" class="stack"></div>
+        <button id="addInvoiceBtn" class="btn secondary wide" type="button">＋ Aggiungi un'altra fattura</button>
+        <button class="btn primary wide" type="submit">Carica e analizza tutto</button>
       </form>
-
-      <div
-        id="uploadStatus"
-        class="status-card hidden"
-      ></div>
+      <div id="uploadStatus" class="status-card hidden"></div>
     </section>
 
-    <section
-      id="view-review"
-      class="view"
-    >
+    <section id="view-review" class="view">
       <div class="section-head">
-        <div>
-          <h2>Revisione fattura</h2>
-          <p id="reviewSubtitle"></p>
-        </div>
-
-        <span
-          id="reviewState"
-          class="status-pill"
-        ></span>
+        <div><h2>Revisione fattura</h2><p id="reviewSubtitle"></p></div>
+        <span id="reviewState" class="status-pill"></span>
       </div>
-
-      <div
-        id="reviewSummary"
-        class="summary-strip"
-      ></div>
-
-      <div
-        id="reviewRows"
-        class="stack"
-      ></div>
-
+      <div id="reviewSummary" class="summary-strip"></div>
+      <div id="reviewRows" class="stack"></div>
       <div class="sticky-actions">
-        <button
-          id="confirmAllBtn"
-          class="btn secondary"
-        >
-          Conferma valide
-        </button>
-
-        <button
-          id="finalizeBtn"
-          class="btn primary"
-        >
-          Finalizza fattura
-        </button>
+        <button id="confirmAllBtn" class="btn secondary">Conferma valide</button>
+        <button id="finalizeBtn" class="btn primary">Finalizza fattura</button>
       </div>
     </section>
 
-    <section
-      id="view-invoices"
-      class="view"
-    >
-      <div class="section-head">
-        <div>
-          <h2>Fatture</h2>
-
-          <p>
-            Apri una fattura da revisionare
-            o controlla lo stato.
-          </p>
-        </div>
-      </div>
-
+    <section id="view-invoices" class="view">
+      <div class="section-head"><div><h2>Fatture</h2><p>Apri una fattura da revisionare o controlla lo stato.</p></div></div>
       <div class="filter-row">
         <select id="invoiceStatusFilter">
-          <option value="">
-            Tutti gli stati
-          </option>
-
-          <option value="RICEVUTA">
-            Ricevute / in coda
-          </option>
-
-          <option value="DA_REVISIONARE">
-            Da revisionare
-          </option>
-
-          <option value="ANALISI_IN_CORSO">
-            In analisi
-          </option>
-
-          <option value="COMPLETATA">
-            Completate
-          </option>
-
-          <option value="ERRORE_OCR">
-            Errore OCR
-          </option>
+          <option value="">Tutti gli stati</option>
+          <option value="RICEVUTA">Ricevute / in coda</option>
+          <option value="DA_REVISIONARE">Da revisionare</option>
+          <option value="ANALISI_IN_CORSO">In analisi</option>
+          <option value="COMPLETATA">Completate</option>
+          <option value="ERRORE_OCR">Errore OCR</option>
         </select>
-
-        <button
-          id="refreshInvoicesBtn"
-          class="btn secondary compact"
-        >
-          Aggiorna
-        </button>
+        <button id="refreshInvoicesBtn" class="btn secondary compact">Aggiorna</button>
       </div>
-
-      <div
-        id="invoiceList"
-        class="stack"
-      ></div>
+      <div id="invoiceList" class="stack"></div>
     </section>
 
-    <section
-      id="view-prices"
-      class="view"
-    >
-      <div class="section-head">
-        <div>
-          <h2>Price Intelligence</h2>
+    <section id="view-prices" class="view">
+      <div class="section-head"><div><h2>Price Intelligence</h2><p>Prezzi, trend, alert e impatto sui margini.</p></div></div>
 
-          <p>
-            Prezzi, trend, alert e impatto sui margini.
-          </p>
-        </div>
+      <div class="intelligence-block">
+        <div class="block-head"><div><h3>Notifiche</h3><p>Ogni variazione di prezzo e cambi di margine da almeno 1 punto.</p></div><span id="notificationCount" class="status-pill">0</span></div>
+        <div id="notificationList" class="stack compact-stack"></div>
       </div>
 
       <div class="intelligence-block">
-        <div class="block-head">
-          <div>
-            <h3>Notifiche</h3>
-
-            <p>
-              Ogni variazione di prezzo e cambi di
-              margine da almeno 1 punto.
-            </p>
-          </div>
-
-          <span
-            id="notificationCount"
-            class="status-pill"
-          >
-            0
-          </span>
-        </div>
-
-        <div
-          id="notificationList"
-          class="stack compact-stack"
-        ></div>
-      </div>
-
-      <div class="intelligence-block">
-        <div class="block-head">
-          <div>
-            <h3>Ingredienti</h3>
-
-            <p>
-              Tocca un ingrediente per aprire
-              grafico e storico acquisti.
-            </p>
-          </div>
-        </div>
-
+        <div class="block-head"><div><h3>Ingredienti</h3><p>Tocca un ingrediente per aprire grafico e storico acquisti.</p></div></div>
         <div class="filter-row prices-filter">
-          <input
-            id="priceSearch"
-            type="search"
-            placeholder="Cerca ingrediente"
-          >
-
-          <select id="categoryFilter">
-            <option value="">
-              Tutte le categorie
-            </option>
-          </select>
+          <input id="priceSearch" type="search" placeholder="Cerca ingrediente">
+          <select id="categoryFilter"><option value="">Tutte le categorie</option></select>
         </div>
-
-        <div
-          id="priceList"
-          class="stack"
-        ></div>
+        <div id="priceList" class="stack"></div>
       </div>
     </section>
   </main>
 
-  <div
-    id="ingredientModal"
-    class="modal-overlay hidden"
-  >
-    <div
-      class="modal-card"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="ingredientModalTitle"
-    >
-      <h2 id="ingredientModalTitle">
-        Nuovo ingrediente / prodotto
-      </h2>
-
-      <form
-        id="ingredientModalForm"
-        class="stack"
-      >
-        <label class="field">
-          <span>Nome</span>
-
-          <input
-            id="ingredientModalName"
-            type="text"
-            required
-          >
-        </label>
-
-        <label class="field">
-          <span>Categoria</span>
-
-          <select
-            id="ingredientModalCategory"
-            required
-          ></select>
-        </label>
-
-        <label
-          id="ingredientModalNewCategoryWrap"
-          class="field hidden"
-        >
-          <span>Nuova categoria</span>
-
-          <input
-            id="ingredientModalNewCategory"
-            type="text"
-            autocomplete="off"
-          >
-        </label>
-
-        <label class="field">
-          <span>Sottocategoria</span>
-
-          <select
-            id="ingredientModalSubcategory"
-            required
-          ></select>
-        </label>
-
-        <label
-          id="ingredientModalNewSubcategoryWrap"
-          class="field hidden"
-        >
-          <span>Nuova sottocategoria</span>
-
-          <input
-            id="ingredientModalNewSubcategory"
-            type="text"
-            autocomplete="off"
-          >
-        </label>
-
-        <label class="field">
-          <span>Unità da tracciare</span>
-
-          <select
-            id="ingredientModalUnit"
-            required
-          ></select>
-        </label>
-
+  <div id="ingredientModal" class="modal-overlay hidden">
+    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="ingredientModalTitle">
+      <h2 id="ingredientModalTitle">Nuovo ingrediente / prodotto</h2>
+      <form id="ingredientModalForm" class="stack">
+        <label class="field"><span>Nome</span><input id="ingredientModalName" type="text" required></label>
+        <label class="field"><span>Categoria</span><select id="ingredientModalCategory" required></select></label>
+        <label id="ingredientModalNewCategoryWrap" class="field hidden"><span>Nuova categoria</span><input id="ingredientModalNewCategory" type="text" autocomplete="off"></label>
+        <label class="field"><span>Sottocategoria</span><select id="ingredientModalSubcategory" required></select></label>
+        <label id="ingredientModalNewSubcategoryWrap" class="field hidden"><span>Nuova sottocategoria</span><input id="ingredientModalNewSubcategory" type="text" autocomplete="off"></label>
+        <label class="field"><span>Unità da tracciare</span><select id="ingredientModalUnit" required></select></label>
         <div class="review-actions">
-          <button
-            id="ingredientModalCancel"
-            class="btn secondary"
-            type="button"
-          >
-            Annulla
-          </button>
-
-          <button
-            class="btn primary"
-            type="submit"
-          >
-            Crea
-          </button>
+          <button id="ingredientModalCancel" class="btn secondary" type="button">Annulla</button>
+          <button class="btn primary" type="submit">Crea</button>
         </div>
       </form>
     </div>
   </div>
 
-  <div
-    id="priceDetailModal"
-    class="modal-overlay hidden"
-  >
-    <div
-      class="modal-card price-detail-card"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="priceDetailTitle"
-    >
+  <div id="priceDetailModal" class="modal-overlay hidden">
+    <div class="modal-card price-detail-card" role="dialog" aria-modal="true" aria-labelledby="priceDetailTitle">
       <div class="modal-head">
-        <div>
-          <div class="eyebrow">
-            PRICE INTELLIGENCE
-          </div>
-
-          <h2 id="priceDetailTitle">
-            Ingrediente
-          </h2>
-
-          <p
-            id="priceDetailSubtitle"
-            class="muted small"
-          ></p>
-        </div>
-
-        <button
-          id="priceDetailClose"
-          class="icon-btn"
-          type="button"
-          aria-label="Chiudi"
-        >
-          ×
-        </button>
+        <div><div class="eyebrow">PRICE INTELLIGENCE</div><h2 id="priceDetailTitle">Ingrediente</h2><p id="priceDetailSubtitle" class="muted small"></p></div>
+        <button id="priceDetailClose" class="icon-btn" type="button" aria-label="Chiudi">×</button>
       </div>
-
-      <div
-        id="priceDetailKpis"
-        class="kpi-grid"
-      ></div>
-
-      <div class="chart-wrap">
-        <canvas id="priceChart"></canvas>
-      </div>
-
-      <h3 class="detail-section-title">
-        Storico acquisti
-      </h3>
-
-      <div
-        id="priceHistoryTable"
-        class="history-table"
-      ></div>
+      <div id="priceDetailKpis" class="kpi-grid"></div>
+      <div class="chart-wrap"><canvas id="priceChart"></canvas></div>
+      <h3 class="detail-section-title">Storico acquisti</h3>
+      <div id="priceHistoryTable" class="history-table"></div>
     </div>
   </div>
 
-  <div
-    id="toast"
-    class="toast"
-  ></div>
+  <div id="toast" class="toast"></div>
+  <div id="loader" class="loader-overlay hidden"><div class="spinner"></div><p id="loaderText">Elaborazione…</p></div>
 
-  <div
-    id="loader"
-    class="loader-overlay hidden"
-  >
-    <div class="spinner"></div>
-
-    <p id="loaderText">
-      Elaborazione…
-    </p>
-  </div>
-
-  <script
-    src="https://cdn.jsdelivr.net/npm/chart.js@4.4.9/dist/chart.umd.min.js"
-  ></script>
-
-  <script src="config.js?v=1.4.1"></script>
-  <script src="app.js?v=1.4.1"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.9/dist/chart.umd.min.js"></script>
+  <script src="config.js?v=1.4.2"></script>
+  <script src="app.js?v=1.4.2"></script>
 </body>
 </html>
