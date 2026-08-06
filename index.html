@@ -3,134 +3,141 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <meta name="theme-color" content="#111111">
+  <meta name="theme-color" content="#0b0b0c">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Fatture AI">
-  <title>Food Cost Intelligence</title>
-  <link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png">
-  <link rel="icon" href="favicon.ico">
-  <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
-  <link rel="manifest" href="site.webmanifest">
-  <link rel="stylesheet" href="styles.css?v=1.4.3">
+  <title>Fatture AI</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <header class="topbar">
-    <div>
-      <div class="eyebrow">FOCACCERIA DELLE LANGHE</div>
-      <h1>Food Cost Intelligence</h1>
+  <div id="toastHost" class="toast-host" aria-live="polite"></div>
+
+  <section id="loginScreen" class="login-screen">
+    <div class="login-card">
+      <div class="brand-mark">FAI</div>
+      <h1>Fatture AI</h1>
+      <p>Food Cost Intelligence</p>
+      <button id="googleLoginBtn" class="google-button" type="button">
+        <span class="google-g">G</span><span>Continua con Google</span>
+      </button>
+      <div id="loginMessage" class="muted small"></div>
     </div>
-    <button id="homeBtn" class="icon-btn" aria-label="Home">⌂</button>
-  </header>
+  </section>
 
-  <main id="app">
-    <section id="view-home" class="view active">
-      <div class="hero-card">
-        <span class="badge">V1.4.3</span>
-        <h2>Controllo prezzi da fattura</h2>
-        <p>Carica, revisiona e registra i prezzi normalizzati in un unico flusso.</p>
+  <div id="appShell" class="app-shell hidden">
+    <header class="app-header">
+      <div>
+        <div class="eyebrow">FOOD COST INTELLIGENCE</div>
+        <h1 id="pageTitle">Fatture AI</h1>
       </div>
-      <div id="homeStatus" class="home-status-grid"></div>
-      <div class="menu-grid">
-        <button class="menu-card primary" data-nav="upload"><span>＋</span><strong>Nuova fattura</strong><small>Foto o PDF</small></button>
-        <button class="menu-card" data-nav="invoices" data-filter="DA_REVISIONARE"><span>✓</span><strong>Da revisionare</strong><small>Righe da confermare</small></button>
-        <button class="menu-card" data-nav="invoices"><span>≡</span><strong>Fatture</strong><small>Storico e stati</small></button>
-        <button class="menu-card" data-nav="prices"><span>↗</span><strong>Prezzi</strong><small>Trend, alert e margini</small></button>
+      <div class="header-actions">
+        <button id="syncBtn" class="icon-button" title="Sincronizza ora" aria-label="Sincronizza ora">↻</button>
+        <button id="notificationBtn" class="icon-button badge-button" title="Notifiche" aria-label="Notifiche">♢<span id="notificationBadge" class="badge hidden">0</span></button>
       </div>
-    </section>
+    </header>
 
-    <section id="view-upload" class="view">
-      <div class="section-head"><div><h2>Carica fatture</h2><p>Ogni riquadro è una fattura. Puoi aggiungere più pagine alla stessa fattura e più fatture nello stesso invio.</p></div></div>
-      <form id="uploadForm" class="stack">
-        <div id="invoiceBatch" class="stack"></div>
-        <button id="addInvoiceBtn" class="btn secondary wide" type="button">＋ Aggiungi un'altra fattura</button>
-        <button class="btn primary wide" type="submit">Carica e analizza tutto</button>
-      </form>
-      <div id="uploadStatus" class="status-card hidden"></div>
-    </section>
+    <main id="mainContent" class="main-content">
+      <section data-view="home" class="view active">
+        <div id="statusGrid" class="status-grid"></div>
+        <div class="section-heading"><h2>Attività recenti</h2><button class="text-button" data-nav="invoices">Vedi fatture</button></div>
+        <div id="recentInvoices" class="stack"></div>
+      </section>
 
-    <section id="view-review" class="view">
-      <div class="section-head">
-        <div><h2>Revisione fattura</h2><p id="reviewSubtitle"></p></div>
-        <span id="reviewState" class="status-pill"></span>
-      </div>
-      <div id="reviewSummary" class="summary-strip"></div>
-      <div id="reviewRows" class="stack"></div>
-      <div class="sticky-actions">
-        <button id="confirmAllBtn" class="btn secondary" type="button">Conferma valide</button>
-        <button id="finalizeBtn" class="btn primary" type="button">Finalizza fattura</button>
-      </div>
-    </section>
-
-    <section id="view-invoices" class="view">
-      <div class="section-head"><div><h2>Fatture</h2><p>Apri una fattura da revisionare o controlla lo stato.</p></div></div>
-      <div class="filter-row">
-        <select id="invoiceStatusFilter">
-          <option value="">Tutti gli stati</option>
-          <option value="RICEVUTA">Ricevute / in coda</option>
-          <option value="DA_REVISIONARE">Da revisionare</option>
-          <option value="ANALISI_IN_CORSO">In analisi</option>
-          <option value="COMPLETATA">Completate</option>
-          <option value="ERRORE_OCR">Errore OCR</option>
-        </select>
-        <button id="refreshInvoicesBtn" class="btn secondary compact" type="button">Aggiorna</button>
-      </div>
-      <div id="invoiceList" class="stack"></div>
-    </section>
-
-    <section id="view-prices" class="view">
-      <div class="section-head"><div><h2>Price Intelligence</h2><p>Prezzi, trend, alert e impatto sui margini.</p></div></div>
-      <div class="intelligence-block">
-        <div class="block-head"><div><h3>Notifiche</h3><p>Ogni variazione di prezzo e cambi di margine da almeno 1 punto.</p></div><span id="notificationCount" class="status-pill">0</span></div>
-        <div id="notificationList" class="stack compact-stack"></div>
-      </div>
-      <div class="intelligence-block">
-        <div class="block-head"><div><h3>Ingredienti</h3><p>Tocca un ingrediente per aprire grafico e storico acquisti.</p></div></div>
-        <div class="filter-row prices-filter">
-          <input id="priceSearch" type="search" placeholder="Cerca ingrediente">
-          <select id="categoryFilter"><option value="">Tutte le categorie</option></select>
+      <section data-view="invoices" class="view">
+        <div class="toolbar">
+          <div class="segmented" id="invoiceFilters">
+            <button class="active" data-status="">Tutte</button>
+            <button data-status="DA_REVISIONARE">Da revisionare</button>
+            <button data-status="COMPLETATA">Completate</button>
+            <button data-status="ERRORE_OCR">Errori</button>
+          </div>
         </div>
+        <div id="invoiceList" class="stack"></div>
+      </section>
+
+      <section data-view="upload" class="view">
+        <div class="section-heading"><div><h2>Carica fatture</h2><p class="muted">Una scheda per ogni fattura. Più immagini nella stessa scheda diventano una fattura multipagina.</p></div></div>
+        <div id="uploadBatches" class="stack"></div>
+        <button id="addBatchBtn" class="secondary-button full" type="button">+ Aggiungi un’altra fattura</button>
+        <button id="submitUploadsBtn" class="primary-button full" type="button">Invia e avvia l’elaborazione</button>
+        <div id="uploadProgress" class="progress-panel hidden"></div>
+      </section>
+
+      <section data-view="prices" class="view">
+        <div class="search-row"><input id="priceSearch" type="search" placeholder="Cerca ingrediente"><select id="categoryFilter"><option value="">Tutte le categorie</option></select></div>
         <div id="priceList" class="stack"></div>
-      </div>
-    </section>
-  </main>
+      </section>
 
-  <div id="ingredientModal" class="modal-overlay hidden">
-    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="ingredientModalTitle">
-      <h2 id="ingredientModalTitle">Nuovo ingrediente / prodotto</h2>
-      <form id="ingredientModalForm" class="stack">
-        <label class="field"><span>Nome</span><input id="ingredientModalName" type="text" required></label>
-        <label class="field"><span>Categoria</span><select id="ingredientModalCategory" required></select></label>
-        <label id="ingredientModalNewCategoryWrap" class="field hidden"><span>Nuova categoria</span><input id="ingredientModalNewCategory" type="text" autocomplete="off"></label>
-        <label class="field"><span>Sottocategoria</span><select id="ingredientModalSubcategory" required></select></label>
-        <label id="ingredientModalNewSubcategoryWrap" class="field hidden"><span>Nuova sottocategoria</span><input id="ingredientModalNewSubcategory" type="text" autocomplete="off"></label>
-        <label class="field"><span>Unità da tracciare</span><select id="ingredientModalUnit" required></select></label>
-        <div class="review-actions">
-          <button id="ingredientModalCancel" class="btn secondary" type="button">Annulla</button>
-          <button class="btn primary" type="submit">Crea</button>
-        </div>
-      </form>
+      <section data-view="notifications" class="view">
+        <div class="section-heading"><h2>Notifiche</h2><button id="markAllReadBtn" class="text-button">Segna tutte come lette</button></div>
+        <div id="notificationList" class="stack"></div>
+      </section>
+
+      <section data-view="settings" class="view">
+        <article class="panel">
+          <h2>Notifiche e soglie</h2>
+          <label class="setting-row"><span><strong>Variazioni prezzo ingrediente</strong><small>Notifica sempre, senza soglia.</small></span><input type="checkbox" checked disabled></label>
+          <label class="field"><span>Soglia Food Cost, punti percentuali</span><input id="fcThreshold" type="number" min="0" step="0.1" value="0.5"></label>
+          <label class="field"><span>Soglia MDC, punti percentuali</span><input id="mdcThreshold" type="number" min="0" step="0.1" value="0.5"></label>
+          <button id="saveSettingsBtn" class="primary-button" type="button">Salva impostazioni</button>
+        </article>
+        <article class="panel">
+          <h2>Account</h2>
+          <div id="accountInfo" class="key-values"></div>
+          <button id="logoutBtn" class="danger-button" type="button">Esci</button>
+        </article>
+        <article class="panel"><h2>Versione</h2><p id="versionText" class="muted"></p></article>
+      </section>
+    </main>
+
+    <nav class="bottom-nav" aria-label="Navigazione principale">
+      <button class="active" data-nav="home"><span>⌂</span><small>Home</small></button>
+      <button data-nav="invoices"><span>▤</span><small>Fatture</small></button>
+      <button class="upload-nav" data-nav="upload"><span>＋</span><small>Carica</small></button>
+      <button data-nav="prices"><span>⌁</span><small>Prezzi</small></button>
+      <button data-nav="settings"><span>⚙</span><small>Impostazioni</small></button>
+    </nav>
+  </div>
+
+  <div id="reviewDrawer" class="drawer hidden" role="dialog" aria-modal="true">
+    <div class="drawer-card">
+      <header class="drawer-header"><button id="reviewBackBtn" class="icon-button">‹</button><div><div class="eyebrow">REVISIONE FATTURA</div><h2 id="reviewTitle">Fattura</h2></div><button id="reviewCloseBtn" class="icon-button">×</button></header>
+      <div id="reviewBody" class="drawer-body"></div>
+      <footer class="drawer-footer"><button id="newIngredientBtn" class="text-button">+ Nuovo ingrediente</button><button id="confirmAllBtn" class="secondary-button">Conferma suggerimenti validi</button><button id="finalizeBtn" class="primary-button">Finalizza fattura</button></footer>
     </div>
   </div>
 
-  <div id="priceDetailModal" class="modal-overlay hidden">
-    <div class="modal-card price-detail-card" role="dialog" aria-modal="true" aria-labelledby="priceDetailTitle">
-      <div class="modal-head">
-        <div><div class="eyebrow">PRICE INTELLIGENCE</div><h2 id="priceDetailTitle">Ingrediente</h2><p id="priceDetailSubtitle" class="muted small"></p></div>
-        <button id="priceDetailClose" class="icon-btn" type="button" aria-label="Chiudi">×</button>
-      </div>
-      <div id="priceDetailKpis" class="kpi-grid"></div>
-      <div class="chart-wrap"><canvas id="priceChart"></canvas></div>
-      <h3 class="detail-section-title">Storico acquisti</h3>
-      <div id="priceHistoryTable" class="history-table"></div>
+  <div id="priceModal" class="modal hidden" role="dialog" aria-modal="true">
+    <div class="price-modal-card">
+      <header class="price-modal-header">
+        <button id="priceBackBtn" class="back-button" aria-label="Torna indietro">‹</button>
+        <div class="price-modal-title"><h2 id="priceModalName">Ingrediente</h2><div id="priceModalCategory" class="muted small"></div></div>
+        <button id="priceCloseBtn" class="close-button" aria-label="Chiudi">×</button>
+      </header>
+      <div id="priceModalBody" class="price-modal-body"></div>
     </div>
   </div>
 
-  <div id="toast" class="toast"></div>
-  <div id="loader" class="loader-overlay hidden"><div class="spinner"></div><p id="loaderText">Elaborazione…</p></div>
+  <template id="uploadBatchTemplate">
+    <article class="panel upload-batch">
+      <div class="batch-header"><h3>Fattura <span class="batch-number"></span></h3><button type="button" class="remove-batch text-button">Rimuovi</button></div>
+      <label class="drop-zone"><input class="batch-files" type="file" accept="application/pdf,image/jpeg,image/png,image/webp,image/heic,image/heif" multiple><strong>Tocca per scegliere PDF o foto</strong><span>Massimo 10 pagine, 12 MB ciascuna</span></label>
+      <div class="file-preview-list"></div>
+      <div class="form-grid">
+        <label class="field"><span>Data documento <small>(facoltativa)</small></span><input class="batch-date" type="date"></label>
+        <label class="field"><span>Fornitore <small>(facoltativo)</small></span><input class="batch-supplier" type="text" autocomplete="organization"></label>
+        <label class="field"><span>Numero fattura <small>(facoltativo)</small></span><input class="batch-number-input" type="text"></label>
+        <label class="field"><span>Totale lordo <small>(facoltativo)</small></span><input class="batch-total" type="number" step="0.01" min="0"></label>
+      </div>
+    </article>
+  </template>
 
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.9/dist/chart.umd.min.js"></script>
-  <script src="config.js?v=1.4.3"></script>
-  <script src="app.js?v=1.4.3"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+  <script src="config.js"></script>
+  <script src="app.js"></script>
 </body>
 </html>

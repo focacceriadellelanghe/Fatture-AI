@@ -1,1388 +1,414 @@
 (() => {
   'use strict';
 
-  const cfg = window.FCI_CONFIG || {};
+  const cfg = window.APP_CONFIG;
+  const db = window.supabase.createClient(cfg.SUPABASE_URL, cfg.SUPABASE_PUBLISHABLE_KEY, {
+    auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true }
+  });
+
   const state = {
-    ingredients: [],
-    units: [],
-    categories: [],
-    subcategoriesByCategory: {},
-    currentInvoiceId: '',
-    allPrices: [],
-    notifications: [],
-    uploadGroups: [],
-    newIngredientRowId: '',
-    priceChart: null,
-    catalogPromise: null,
-    navigationToken: 0
+    session: null, user: null, profile: null, view: 'home', invoiceFilter: '',
+    invoices: [], ingredients: [], notifications: [], settings: null,
+    reviewInvoice: null, reviewRows: [], priceChart: null, pollingTimer: null
   };
 
-  const READ_ACTIONS = new Set([
-    'get_app_status',
-    'get_invoice_review',
-    'get_ingredients',
-    'get_tracking_units',
-    'list_invoices',
-    'get_price_dashboard'
-  ]);
+  const $ = s => document.querySelector(s);
+  const $$ = s => Array.from(document.querySelectorAll(s));
+  const esc = v => String(v ?? '').replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
+  const num = v => v === null || v === undefined || v === '' ? null : Number(v);
+  const money = v => num(v) === null ? '—' : new Intl.NumberFormat('it-IT',{style:'currency',currency:'EUR',minimumFractionDigits:2,maximumFractionDigits:3}).format(Number(v));
+  const decimal = (v,d=2) => num(v) === null ? '—' : new Intl.NumberFormat('it-IT',{minimumFractionDigits:d,maximumFractionDigits:d}).format(Number(v));
+  const dateIt = v => !v ? '—' : new Intl.DateTimeFormat('it-IT',{day:'2-digit',month:'2-digit',year:'numeric'}).format(new Date(v));
+  const dateTimeIt = v => !v ? '—' : new Intl.DateTimeFormat('it-IT',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}).format(new Date(v));
+  const byId = (list,id) => list.find(x => String(x.id) === String(id));
 
-  const RETRYABLE_STATUSES = new Set([404, 408, 429, 500, 502, 503, 504]);
+  function toast(message, type='') {
+    const el = document.createElement('div');
+    el.className = `toast ${type}`;
+    el.textContent = message;
+    $('#toastHost').appendChild(el);
+    setTimeout(() => el.remove(), 4200);
+  }
 
-  const $ = id => document.getElementById(id);
-  const qsa = selector => Array.from(document.querySelectorAll(selector));
+  function setBusy(button, busy, label) {
+    if (!button) return;
+    if (busy) { button.dataset.oldLabel = button.textContent; button.textContent = label || 'Attendere…'; button.disabled = true; }
+    else { button.textContent = button.dataset.oldLabel || button.textContent; button.disabled = false; }
+  }
 
-  document.addEventListener('DOMContentLoaded', init);
+  function statusClass(status) {
+    const s = String(status || '').toUpperCase();
+    if (s === 'COMPLETATA') return 'done';
+    if (s === 'DA_REVISIONARE') return 'ready';
+    if (s === 'ERRORE_OCR' || s === 'DUPLICATA') return 'error';
+    if (s === 'RICEVUTA' || s === 'ANALISI_IN_CORSO') return 'processing';
+    return '';
+  }
 
-  function init() {
-    qsa('[data-nav]').forEach(button => {
-      button.addEventListener('click', () => {
-        const filter = button.dataset.filter || '';
-        if (filter) $('invoiceStatusFilter').value = filter;
-        navigate(button.dataset.nav, filter ? {status: filter} : {}, true);
-      });
+  function statusLabel(status) {
+    return ({RICEVUTA:'Ricevuta',ANALISI_IN_CORSO:'In elaborazione',DA_REVISIONARE:'Da revisionare',COMPLETATA:'Completata',DUPLICATA:'Duplicata',ERRORE_OCR:'Errore OCR'})[status] || status || '—';
+  }
+  function rowStatusLabel(status){return ({DA_ASSOCIARE:'Da associare',SUGGERITO:'Suggerito',CONFERMATO:'Confermato',ESCLUSO:'Escluso'})[status]||status||'—'}
+
+  async function api(action, payload={}) {
+    if (!cfg.APPS_SCRIPT_URL || cfg.APPS_SCRIPT_URL.includes('INCOLLA_QUI')) throw new Error('URL Apps Script non configurato in config.js');
+    const session = (await db.auth.getSession()).data.session;
+    if (!session?.access_token) throw new Error('Sessione scaduta. Accedi di nuovo.');
+    const response = await fetch(cfg.APPS_SCRIPT_URL, {
+      method: 'POST', redirect: 'follow', headers: {'Content-Type':'text/plain;charset=utf-8'},
+      body: JSON.stringify({ action, accessToken: session.access_token, ...payload })
     });
+    const text = await response.text();
+    let data;
+    try { data = JSON.parse(text); } catch (_) { throw new Error('Risposta non valida dal backend Apps Script'); }
+    if (!response.ok || data.success === false) throw new Error(data.error || data.message || `Errore HTTP ${response.status}`);
+    return data;
+  }
 
-    $('homeBtn').addEventListener('click', () => navigate('home', {}, true));
-    $('addInvoiceBtn').addEventListener('click', addUploadGroup);
-    $('uploadForm').addEventListener('submit', submitUpload);
-    $('refreshInvoicesBtn').addEventListener('click', loadInvoices);
-    $('invoiceStatusFilter').addEventListener('change', loadInvoices);
-    $('confirmAllBtn').addEventListener('click', confirmAllValid);
-    $('finalizeBtn').addEventListener('click', finalizeInvoice);
-    $('priceSearch').addEventListener('input', renderPriceFilter);
-    $('categoryFilter').addEventListener('change', renderPriceFilter);
-    $('priceDetailClose').addEventListener('click', closePriceDetail);
-    $('priceDetailModal').addEventListener('click', event => {
-      if (event.target.id === 'priceDetailModal') closePriceDetail();
+  async function loginGoogle() {
+    $('#loginMessage').textContent = 'Reindirizzamento a Google…';
+    const { error } = await db.auth.signInWithOAuth({
+      provider: 'google',
+      options: { redirectTo: cfg.SITE_URL || window.location.href.split('#')[0].split('?')[0], queryParams: { prompt: 'select_account' } }
     });
-    $('ingredientModalCancel').addEventListener('click', closeIngredientModal);
-    $('ingredientModalForm').addEventListener('submit', submitNewIngredient);
-    $('ingredientModalCategory').addEventListener('change', handleCategorySelection);
-    $('ingredientModalSubcategory').addEventListener('change', handleSubcategorySelection);
-    $('ingredientModalUnit').addEventListener('change', async event => {
-      if (event.target.value !== '__NEW__') return;
-      const unit = await createUnitFromPrompt();
-      if (unit) populateUnitSelect(event.target, unit);
-      else event.target.value = '';
-    });
-
-    window.addEventListener('popstate', applyRouteFromUrl);
-    addUploadGroup();
-    applyRouteFromUrl();
+    if (error) { $('#loginMessage').textContent = error.message; toast(error.message,'error'); }
   }
 
-  function sleep(milliseconds) {
-    return new Promise(resolve => window.setTimeout(resolve, milliseconds));
-  }
-
-  function timeoutForAction(action) {
-    if (action === 'upload_group_and_analyze' || action === 'upload_and_analyze') return 90000;
-    if (action === 'finalize_invoice') return 90000;
-    if (READ_ACTIONS.has(action)) return 35000;
-    return 50000;
-  }
-
-  async function fetchAttempt(action, data, timeoutMs, attempt) {
-    const endpoint = String(cfg.APP_SCRIPT_URL || '').trim();
-    if (!endpoint || endpoint.includes('INCOLLA_QUI')) {
-      throw new Error('Configura APP_SCRIPT_URL in config.js');
+  async function bootstrap(session) {
+    state.session = session || null;
+    state.user = session?.user || null;
+    if (!session) {
+      $('#loginScreen').classList.remove('hidden'); $('#appShell').classList.add('hidden'); stopPolling(); return;
     }
-
-    const url = new URL(endpoint);
-    url.searchParams.set('_fci', Date.now().toString());
-    url.searchParams.set('_action', action);
-    url.searchParams.set('_attempt', String(attempt));
-
-    const controller = new AbortController();
-    const timer = window.setTimeout(() => controller.abort(), timeoutMs);
-
-    try {
-      const response = await fetch(url.toString(), {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'text/plain;charset=utf-8',
-          'Accept': 'application/json'
-        },
-        body: JSON.stringify({
-          action,
-          apiToken: cfg.API_TOKEN || '',
-          ...data
-        }),
-        redirect: 'follow',
-        cache: 'no-store',
-        signal: controller.signal
-      });
-
-      const text = await response.text();
-
-      if (!response.ok) {
-        const error = new Error(`Errore HTTP ${response.status} durante ${action}`);
-        error.httpStatus = response.status;
-        error.responseText = text;
-        throw error;
-      }
-
-      let json;
-      try {
-        json = JSON.parse(text);
-      } catch (_) {
-        throw new Error(`Risposta non valida durante ${action}`);
-      }
-
-      if (!json || json.success !== true) {
-        throw new Error(
-          (json && (json.error || json.reason)) ||
-          `Errore API durante ${action}`
-        );
-      }
-
-      return json;
-    } finally {
-      window.clearTimeout(timer);
+    const { data: profile, error } = await db.from('profiles').select('id,email,role,active').eq('id',session.user.id).maybeSingle();
+    if (error || !profile || profile.active === false) {
+      await db.auth.signOut();
+      $('#loginMessage').textContent = 'Questo account non è autorizzato.';
+      toast('Account non autorizzato','error'); return;
     }
+    state.profile = profile;
+    const canManage=['owner','manager'].includes(String(profile.role));
+    const canOperate=['owner','manager','operator'].includes(String(profile.role));
+    $('#newIngredientBtn').classList.toggle('hidden', !canManage);
+    $('#syncBtn').classList.toggle('hidden', !canManage);
+    $('#saveSettingsBtn').classList.toggle('hidden', !canManage);
+    $('#fcThreshold').disabled=!canManage; $('#mdcThreshold').disabled=!canManage;
+    document.querySelectorAll('[data-nav="upload"]').forEach(el=>el.classList.toggle('hidden',!canOperate));
+    $('#confirmAllBtn').classList.toggle('hidden',!canOperate); $('#finalizeBtn').classList.toggle('hidden',!canOperate);
+    $('#loginScreen').classList.add('hidden'); $('#appShell').classList.remove('hidden');
+    $('#accountInfo').innerHTML = `<div><span>Email</span><strong>${esc(profile.email || session.user.email)}</strong></div><div><span>Ruolo</span><strong>${esc(profile.role)}</strong></div>`;
+    $('#versionText').textContent = `${cfg.APP_NAME} ${cfg.APP_VERSION} · Supabase + Google Drive + Gemini`;
+    await Promise.all([loadSettings(), loadHome(), loadIngredients(), loadNotifications()]);
+    startPolling();
   }
 
-  function isTemporaryError(error) {
-    const status = Number(error && error.httpStatus);
-    const message = String(error && error.message || '');
-    return (
-      RETRYABLE_STATUSES.has(status) ||
-      error?.name === 'AbortError' ||
-      error instanceof TypeError ||
-      /failed to fetch|load failed|networkerror|network request failed/i.test(message)
-    );
+  function navigate(view) {
+    state.view = view;
+    $$('.view').forEach(v => v.classList.toggle('active', v.dataset.view === view));
+    $$('[data-nav]').forEach(b => b.classList.toggle('active', b.dataset.nav === view));
+    const titles = {home:'Fatture AI',invoices:'Fatture',upload:'Carica fatture',prices:'Prezzi',notifications:'Notifiche',settings:'Impostazioni'};
+    $('#pageTitle').textContent = titles[view] || 'Fatture AI';
+    if (view === 'invoices') loadInvoices();
+    if (view === 'prices') renderPrices();
+    if (view === 'notifications') renderNotifications();
+    if (view === 'upload' && !$('#uploadBatches').children.length) addUploadBatch();
+    window.scrollTo({top:0,behavior:'instant'});
   }
 
-  async function api(action, data = {}, options = {}) {
-    const isRead = READ_ACTIONS.has(action);
-    const attempts = options.attempts || (isRead ? 2 : 1);
-    const timeoutMs = options.timeoutMs || timeoutForAction(action);
-    let lastError = null;
-
-    for (let attempt = 1; attempt <= attempts; attempt++) {
-      try {
-        return await fetchAttempt(action, data, timeoutMs, attempt);
-      } catch (error) {
-        lastError = error;
-        if (attempt >= attempts || !isTemporaryError(error)) break;
-        await sleep(650 * attempt);
-      }
-    }
-
-    throw lastError || new Error(`Errore durante ${action}`);
-  }
-
-  async function verifyInvoiceReview(invoiceId, predicate, attempts = 4) {
-    for (let attempt = 1; attempt <= attempts; attempt++) {
-      try {
-        const review = await api(
-          'get_invoice_review',
-          {invoiceId},
-          {attempts: 2, timeoutMs: 35000}
-        );
-        if (predicate(review)) return review;
-      } catch (_) {}
-      if (attempt < attempts) await sleep(900 * attempt);
-    }
-    return null;
-  }
-
-  async function writeWithRecovery(action, data, verify) {
-    try {
-      return await api(action, data, {attempts: 1});
-    } catch (originalError) {
-      if (!isTemporaryError(originalError) || typeof verify !== 'function') {
-        throw originalError;
-      }
-
-      const recovered = await verify();
-      if (recovered) return {success: true, recovered: true, ...recovered};
-      throw originalError;
-    }
-  }
-
-  function readRoute() {
-    const params = new URLSearchParams(window.location.search);
-    return {
-      view: params.get('view') || 'home',
-      status: params.get('status') || '',
-      invoiceId: params.get('invoice') || '',
-      ingredientId: params.get('ingredient') || '',
-      notificationId: params.get('notification') || ''
-    };
-  }
-
-  function writeRoute(view, params = {}) {
-    const query = new URLSearchParams();
-    if (view && view !== 'home') query.set('view', view);
-    if (params.status) query.set('status', params.status);
-    if (params.invoiceId) query.set('invoice', params.invoiceId);
-    if (params.ingredientId) query.set('ingredient', params.ingredientId);
-    if (params.notificationId) query.set('notification', params.notificationId);
-    history.pushState({}, '', window.location.pathname + (query.toString() ? `?${query}` : ''));
-  }
-
-  async function applyRouteFromUrl() {
-    const route = readRoute();
-    await navigate(route.view, route, false);
-  }
-
-  async function navigate(view, params = {}, updateUrl = true) {
-    const token = ++state.navigationToken;
-    const target = $('view-' + view) ? view : 'home';
-
-    qsa('.view').forEach(element => element.classList.remove('active'));
-    $('view-' + target).classList.add('active');
-    window.scrollTo({top: 0, behavior: 'auto'});
-
-    if (updateUrl) writeRoute(target, params);
-
-    try {
-      if (target === 'home') {
-        await loadHomeStatus();
-      } else if (target === 'invoices') {
-        if (params.status !== undefined) $('invoiceStatusFilter').value = params.status;
-        await loadInvoices();
-      } else if (target === 'review' && params.invoiceId) {
-        await openReview(params.invoiceId, false);
-      } else if (target === 'prices') {
-        await loadPrices();
-        if (token !== state.navigationToken) return;
-        if (params.ingredientId) openPriceDetail(params.ingredientId);
-        if (params.notificationId) {
-          const card = document.querySelector(
-            `[data-notification-id="${cssEsc(params.notificationId)}"]`
-          );
-          if (card) card.scrollIntoView({behavior: 'smooth', block: 'center'});
-        }
-      }
-    } catch (error) {
-      toast(error.message);
-    }
-  }
-
-  async function loadHomeStatus() {
-    const box = $('homeStatus');
-    if (!box) return;
-
-    try {
-      const result = await api('get_app_status');
-      const counts = result.counts || {};
-      const active = Number(counts.received || 0) + Number(counts.analyzing || 0);
-
-      box.innerHTML = `
-        <button class="home-status-item" data-home-status="ANALISI_IN_CORSO">
-          <strong>${active}</strong><span>In elaborazione</span>
-        </button>
-        <button class="home-status-item" data-home-status="DA_REVISIONARE">
-          <strong>${Number(counts.ready || 0)}</strong><span>Da revisionare</span>
-        </button>
-        <button class="home-status-item" data-home-status="ERRORE_OCR">
-          <strong>${Number(counts.errors || 0)}</strong><span>Con errore</span>
-        </button>`;
-
-      qsa('[data-home-status]').forEach(button => {
-        button.addEventListener('click', () => {
-          $('invoiceStatusFilter').value = button.dataset.homeStatus;
-          navigate('invoices', {status: button.dataset.homeStatus}, true);
-        });
-      });
-    } catch (error) {
-      box.innerHTML = `<div class="status-card">${esc(error.message)}</div>`;
-    }
-  }
-
-  function addUploadGroup() {
-    const id = `up-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-    state.uploadGroups.push({id, files: []});
-    renderUploadGroups();
-  }
-
-  function renderUploadGroups() {
-    const wrapper = $('invoiceBatch');
-    wrapper.innerHTML = state.uploadGroups.map((group, index) => `
-      <article class="invoice-upload-card" data-upload-id="${esc(group.id)}">
-        <div class="invoice-upload-head">
-          <h3>Fattura ${index + 1}</h3>
-          ${state.uploadGroups.length > 1 ? '<button class="remove-invoice-btn" type="button">Rimuovi</button>' : ''}
-        </div>
-        <label class="upload-zone">
-          <input class="group-file-input" type="file" accept="image/*,application/pdf" multiple>
-          <span class="upload-icon">⌁</span>
-          <strong>Aggiungi foto o PDF</strong>
-          <small>Più foto = pagine della stessa fattura. Un PDF può essere già multipagina.</small>
-        </label>
-        <div class="invoice-files">${group.files.map((file, fileIndex) => `
-          <div class="invoice-file-row">
-            <span>${esc(file.name)}</span>
-            <button type="button" data-remove-file="${fileIndex}" aria-label="Rimuovi">×</button>
-          </div>`).join('')}</div>
-        <div class="form-grid" style="margin-top:12px">
-          <label><span>Data documento <em>opzionale</em></span><input class="group-date" type="date" value="${esc(group.documentDate || '')}"></label>
-          <label><span>Fornitore <em>opzionale</em></span><input class="group-supplier" type="text" value="${esc(group.supplier || '')}" autocomplete="organization"></label>
-          <label><span>Numero documento <em>opzionale</em></span><input class="group-number" type="text" value="${esc(group.invoiceNumber || '')}"></label>
-          <label><span>Totale € <em>opzionale</em></span><input class="group-total" type="number" step="0.01" inputmode="decimal" value="${esc(group.total || '')}"></label>
-        </div>
-        <div class="ocr-auto-note">I campi vuoti vengono compilati dai dati letti da Gemini. I valori inseriti manualmente hanno priorità.</div>
-      </article>`).join('');
-
-    qsa('[data-upload-id]').forEach(card => {
-      const group = state.uploadGroups.find(item => item.id === card.dataset.uploadId);
-
-      card.querySelector('.group-file-input').addEventListener('change', event => {
-        const incoming = Array.from(event.target.files || []);
-        if (!incoming.length) return;
-
-        if (
-          (group.files.some(file => file.type === 'application/pdf') ||
-           incoming.some(file => file.type === 'application/pdf')) &&
-          group.files.length + incoming.length > 1
-        ) {
-          toast('Un PDF deve essere l’unico file della fattura.');
-          event.target.value = '';
-          return;
-        }
-
-        captureGroupFields(card, group);
-        group.files.push(...incoming);
-        if (group.files.length > 10) {
-          group.files = group.files.slice(0, 10);
-          toast('Massimo 10 pagine per fattura');
-        }
-        renderUploadGroups();
-      });
-
-      card.querySelectorAll('[data-remove-file]').forEach(button => {
-        button.addEventListener('click', () => {
-          captureGroupFields(card, group);
-          group.files.splice(Number(button.dataset.removeFile), 1);
-          renderUploadGroups();
-        });
-      });
-
-      const remove = card.querySelector('.remove-invoice-btn');
-      if (remove) {
-        remove.addEventListener('click', () => {
-          state.uploadGroups = state.uploadGroups.filter(item => item.id !== group.id);
-          renderUploadGroups();
-        });
-      }
-
-      ['.group-date', '.group-supplier', '.group-number', '.group-total'].forEach(selector => {
-        card.querySelector(selector).addEventListener('input', () => captureGroupFields(card, group));
-      });
-    });
-  }
-
-  function captureGroupFields(card, group) {
-    group.documentDate = card.querySelector('.group-date').value;
-    group.supplier = card.querySelector('.group-supplier').value.trim();
-    group.invoiceNumber = card.querySelector('.group-number').value.trim();
-    group.total = card.querySelector('.group-total').value;
-  }
-
-  async function submitUpload(event) {
-    event.preventDefault();
-
-    qsa('[data-upload-id]').forEach(card => {
-      const group = state.uploadGroups.find(item => item.id === card.dataset.uploadId);
-      if (group) captureGroupFields(card, group);
-    });
-
-    const groups = state.uploadGroups.filter(group => group.files.length);
-    if (!groups.length) {
-      toast('Aggiungi almeno una fattura');
-      return;
-    }
-
-    const accepted = [];
-    const failed = [];
-    $('uploadStatus').classList.add('hidden');
-
-    try {
-      for (let index = 0; index < groups.length; index++) {
-        const group = groups[index];
-        setLoader(true, `Invio fattura ${index + 1} di ${groups.length}…`);
-
-        try {
-          const files = [];
-          let totalBytes = 0;
-
-          for (const original of group.files) {
-            const file = original.type.startsWith('image/')
-              ? await compressImage(original)
-              : original;
-
-            if (file.size > 12 * 1024 * 1024) {
-              throw new Error(`${file.name}: file oltre 12 MB`);
-            }
-
-            totalBytes += file.size;
-            if (totalBytes > 30 * 1024 * 1024) {
-              throw new Error('Dimensione complessiva oltre 30 MB');
-            }
-
-            files.push({
-              fileName: file.name,
-              mimeType: file.type || original.type,
-              base64Data: await fileToBase64(file)
-            });
-          }
-
-          const result = await api('upload_group_and_analyze', {
-            files,
-            documentDate: group.documentDate || '',
-            supplier: group.supplier || '',
-            invoiceNumber: group.invoiceNumber || '',
-            total: group.total || '',
-            clientTimestamp: new Date().toISOString()
-          }, {attempts: 1, timeoutMs: 90000});
-
-          accepted.push(result);
-        } catch (error) {
-          failed.push({index: index + 1, message: error.message});
-        }
-      }
-
-      state.uploadGroups = [];
-      addUploadGroup();
-
-      if (accepted.length) {
-        const message = accepted.length === 1
-          ? 'Fattura ricevuta. Analisi avviata.'
-          : `${accepted.length} fatture ricevute. Analisi avviata.`;
-
-        $('uploadStatus').classList.remove('hidden');
-        $('uploadStatus').innerHTML = `<strong>${esc(message)}</strong>${
-          failed.length ? `<br><span class="muted">${failed.length} invii non riusciti.</span>` : ''
-        }`;
-        toast(message);
-        $('invoiceStatusFilter').value = '';
-        setLoader(false);
-        await navigate('invoices', {}, true);
-      } else {
-        throw new Error(failed.map(item => `Fattura ${item.index}: ${item.message}`).join(' · '));
-      }
-    } catch (error) {
-      $('uploadStatus').classList.remove('hidden');
-      $('uploadStatus').innerHTML = `<strong>Errore</strong><br><span class="muted">${esc(error.message)}</span>`;
-      toast(error.message);
-    } finally {
-      setLoader(false);
-    }
-  }
-
-  async function compressImage(file) {
-    if (file.size < 1.6 * 1024 * 1024) return file;
-
-    const dataUrl = await new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(reader.result);
-      reader.onerror = reject;
-      reader.readAsDataURL(file);
-    });
-
-    const image = await new Promise((resolve, reject) => {
-      const element = new Image();
-      element.onload = () => resolve(element);
-      element.onerror = reject;
-      element.src = dataUrl;
-    });
-
-    const max = 1800;
-    const scale = Math.min(1, max / Math.max(image.width, image.height));
-    const canvas = document.createElement('canvas');
-    canvas.width = Math.round(image.width * scale);
-    canvas.height = Math.round(image.height * scale);
-    canvas.getContext('2d').drawImage(image, 0, 0, canvas.width, canvas.height);
-
-    const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.84));
-    if (!blob) throw new Error('Compressione immagine non riuscita');
-
-    return new File(
-      [blob],
-      file.name.replace(/\.[^.]+$/, '') + '.jpg',
-      {type: 'image/jpeg'}
-    );
-  }
-
-  function fileToBase64(file) {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(String(reader.result).split(',')[1]);
-      reader.onerror = () => reject(new Error('Impossibile leggere il file'));
-      reader.readAsDataURL(file);
-    });
-  }
-
-  async function ensureCatalog() {
-    if (state.ingredients.length && state.units.length) return;
-
-    if (!state.catalogPromise) {
-      state.catalogPromise = Promise.all([
-        state.ingredients.length
-          ? Promise.resolve(null)
-          : api('get_ingredients'),
-        state.units.length
-          ? Promise.resolve(null)
-          : api('get_tracking_units')
-      ]).then(([ingredientsResult, unitsResult]) => {
-        if (ingredientsResult) {
-          state.ingredients = ingredientsResult.ingredients || [];
-          state.categories = ingredientsResult.categories || [];
-          state.subcategoriesByCategory = ingredientsResult.subcategoriesByCategory || {};
-        }
-        if (unitsResult) {
-          state.units = unitsResult.units || ['€/kg', '€/pz', '€/confezione'];
-        }
-      }).finally(() => {
-        state.catalogPromise = null;
-      });
-    }
-
-    await state.catalogPromise;
-  }
-
-  async function openReview(invoiceId, updateUrl = true) {
-    if (!invoiceId) return;
-
-    state.currentInvoiceId = invoiceId;
-    setLoader(true, 'Caricamento revisione…');
-
-    try {
-      const [review] = await Promise.all([
-        api('get_invoice_review', {invoiceId}),
-        ensureCatalog()
-      ]);
-
-      renderReview(review);
-      showView('review');
-      if (updateUrl) writeRoute('review', {invoiceId});
-    } catch (error) {
-      toast(error.message);
-      throw error;
-    } finally {
-      setLoader(false);
-    }
-  }
-
-  function showView(view) {
-    qsa('.view').forEach(element => element.classList.remove('active'));
-    const target = $('view-' + view);
-    if (target) target.classList.add('active');
-    window.scrollTo({top: 0, behavior: 'auto'});
-  }
-
-  function renderReview(data) {
-    const invoice = data.invoice || {};
-    const rows = data.rows || [];
-    const stats = data.stats || {};
-
-    $('reviewSubtitle').textContent = [
-      invoice.supplier,
-      invoice.invoiceNumber ? `Doc. ${invoice.invoiceNumber}` : '',
-      invoice.documentDate
-    ].filter(Boolean).join(' · ');
-
-    $('reviewState').textContent = invoice.status || '';
-    $('reviewSummary').innerHTML = `
-      <div><strong>${stats.confirmed || 0}</strong><small>Confermate</small></div>
-      <div><strong>${stats.excluded || 0}</strong><small>Escluse</small></div>
-      <div><strong>${stats.pending || 0}</strong><small>Da gestire</small></div>`;
-
-    $('reviewRows').innerHTML = rows.map(reviewCardHtml).join('') ||
-      '<div class="status-card">Nessuna riga trovata.</div>';
-
-    rows.forEach(bindReviewCard);
-  }
-
-  function reviewCardHtml(row) {
-    const ingredientOptions = [
-      '<option value="">— Seleziona ingrediente —</option>',
-      ...state.ingredients.map(ingredient => `
-        <option value="${esc(ingredient.id)}" ${ingredient.id === row.ingredientId ? 'selected' : ''}>
-          ${esc(ingredient.name)}${ingredient.category ? ' · ' + esc(ingredient.category) : ''}
-        </option>`)
-    ].join('');
-
-    const documentUnit = canonicalUnitClient(row.documentUnit);
-    const trackingUnit = canonicalUnitClient(row.comparisonUnit);
-    const quantity = num(row.normalizedQuantity);
-    const net = num(row.lineNetAmount);
-    const price = quantity && quantity > 0 && net !== null ? net / quantity : null;
-    const cssClass = row.status === 'CONFERMATO'
-      ? 'confirmed'
-      : row.status === 'ESCLUSO'
-        ? 'excluded'
-        : '';
-
-    return `<article class="review-card ${cssClass}" data-row-id="${esc(row.rowId)}">
-      <div class="review-title">
-        <h3>${esc(row.description || 'Riga senza descrizione')}</h3>
-        <span class="confidence">${row.confidence || 0}%</span>
-      </div>
-      <div class="muted small">${row.itemCode ? 'Codice ' + esc(row.itemCode) + ' · ' : ''}Stato: ${esc(row.status)}</div>
-      <div class="meta-grid">
-        <div class="meta"><small>Imponibile</small><strong>${money(row.lineNetAmount)}</strong></div>
-        <div class="meta"><small>Prezzo documento</small><strong>${row.documentUnitPrice === '' ? '—' : money(row.documentUnitPrice)}</strong></div>
-        <div class="meta"><small>Sconto</small><strong>${row.discountPercent === '' ? '—' : fmt(row.discountPercent) + '%'}</strong></div>
-        <div class="meta"><small>IVA</small><strong>${row.vatRate === '' ? '—' : fmt(row.vatRate) + '%'}</strong></div>
-      </div>
-      <div class="field">
-        <span>Ingrediente / prodotto</span>
-        <select class="ingredient-select">${ingredientOptions}</select>
-        <button type="button" class="inline-add new-ingredient-btn">＋ Nuovo ingrediente / prodotto</button>
-      </div>
-      <div class="form-grid review-units-grid" style="margin-top:10px">
-        <label><span>Quantità fattura</span><input class="document-qty-input" type="number" step="0.000001" value="${esc(row.documentQuantity)}"></label>
-        <label><span>Unità fattura</span><select class="document-unit-select">${unitOptionsHtml(documentUnit)}</select></label>
-        <label><span>Quantità da tracciare</span><input class="tracking-qty-input" type="number" step="0.000001" value="${esc(row.normalizedQuantity)}"></label>
-        <label><span>Unità da tracciare</span><select class="tracking-unit-select">${unitOptionsHtml(trackingUnit)}</select></label>
-      </div>
-      <div class="meta" style="margin-top:10px">
-        <small>Prezzo da tracciare stimato</small>
-        <strong>${price === null ? '—' : fmt(price, 6) + ' ' + esc(trackingUnit)}</strong>
-      </div>
-      <div class="review-actions">
-        <button class="btn danger exclude-btn" type="button">Escludi</button>
-        <button class="btn primary confirm-btn" type="button">Conferma</button>
-      </div>
-    </article>`;
-  }
-
-  function bindReviewCard(row) {
-    const element = document.querySelector(`[data-row-id="${cssEsc(row.rowId)}"]`);
-    if (!element) return;
-
-    const ingredientSelect = element.querySelector('.ingredient-select');
-    const trackingUnitSelect = element.querySelector('.tracking-unit-select');
-    const documentUnitSelect = element.querySelector('.document-unit-select');
-
-    ingredientSelect.addEventListener('change', () => {
-      const ingredient = state.ingredients.find(item => item.id === ingredientSelect.value);
-      if (ingredient?.unit) ensureOptionAndSelect(trackingUnitSelect, ingredient.unit);
-    });
-
-    [trackingUnitSelect, documentUnitSelect].forEach(select => {
-      select.addEventListener('change', async () => {
-        if (select.value !== '__NEW__') return;
-        const unit = await createUnitFromPrompt();
-        if (unit) ensureOptionAndSelect(select, unit);
-        else select.value = '';
-      });
-    });
-
-    element.querySelector('.new-ingredient-btn').addEventListener('click', () => {
-      state.newIngredientRowId = row.rowId;
-      openIngredientModal();
-    });
-
-    element.querySelector('.confirm-btn').addEventListener('click', async () => {
-      const button = element.querySelector('.confirm-btn');
-      if (button.disabled) return;
-      button.disabled = true;
-
-      const payload = {
-        rowId: row.rowId,
-        ingredientId: ingredientSelect.value,
-        documentQuantity: element.querySelector('.document-qty-input').value,
-        documentUnit: documentUnitSelect.value,
-        normalizedQuantity: element.querySelector('.tracking-qty-input').value,
-        comparisonUnit: trackingUnitSelect.value,
-        saveTrackingUnitAsDefault: true
-      };
-
-      try {
-        const result = await writeWithRecovery(
-          'confirm_row',
-          payload,
-          async () => {
-            const review = await verifyInvoiceReview(
-              state.currentInvoiceId,
-              value => (value.rows || []).some(item =>
-                item.rowId === row.rowId &&
-                String(item.status).toUpperCase() === 'CONFERMATO'
-              ),
-              3
-            );
-            return review ? {review} : null;
-          }
-        );
-
-        if (result.review) renderReview(result.review);
-        else await refreshCurrentReview();
-
-        toast(result.recovered ? 'Riga confermata e verificata' : 'Riga confermata');
-      } catch (error) {
-        button.disabled = false;
-        toast(error.message);
-      }
-    });
-
-    element.querySelector('.exclude-btn').addEventListener('click', async () => {
-      const button = element.querySelector('.exclude-btn');
-      if (button.disabled) return;
-      button.disabled = true;
-
-      try {
-        const result = await writeWithRecovery(
-          'exclude_row',
-          {rowId: row.rowId},
-          async () => {
-            const review = await verifyInvoiceReview(
-              state.currentInvoiceId,
-              value => (value.rows || []).some(item =>
-                item.rowId === row.rowId &&
-                String(item.status).toUpperCase() === 'ESCLUSO'
-              ),
-              3
-            );
-            return review ? {review} : null;
-          }
-        );
-
-        if (result.review) renderReview(result.review);
-        else await refreshCurrentReview();
-        toast(result.recovered ? 'Riga esclusa e verificata' : 'Riga esclusa');
-      } catch (error) {
-        button.disabled = false;
-        toast(error.message);
-      }
-    });
-  }
-
-  async function refreshCurrentReview() {
-    if (!state.currentInvoiceId) return null;
-    const review = await api('get_invoice_review', {invoiceId: state.currentInvoiceId});
-    renderReview(review);
-    return review;
-  }
-
-  async function confirmAllValid() {
-    if (!state.currentInvoiceId) return;
-
-    const button = $('confirmAllBtn');
-    if (button.disabled) return;
-    button.disabled = true;
-    setLoader(true, 'Conferma righe valide…');
-
-    try {
-      const result = await writeWithRecovery(
-        'confirm_all_valid',
-        {invoiceId: state.currentInvoiceId},
-        async () => {
-          const review = await verifyInvoiceReview(
-            state.currentInvoiceId,
-            value => Number(value.stats?.pending || 0) === 0,
-            4
-          );
-          return review ? {review, confirmed: Number(review.stats?.confirmed || 0)} : null;
-        }
-      );
-
-      const review = result.review || await refreshCurrentReview();
-      if (result.review) renderReview(result.review);
-      toast(`${Number(result.confirmed ?? review?.stats?.confirmed ?? 0)} righe confermate`);
-    } catch (error) {
-      toast(error.message);
-    } finally {
-      button.disabled = false;
-      setLoader(false);
-    }
-  }
-
-  async function finalizeInvoice() {
-    if (!state.currentInvoiceId) return;
-
-    const invoiceId = state.currentInvoiceId;
-    const button = $('finalizeBtn');
-    if (button.disabled) return;
-
-    button.disabled = true;
-    setLoader(true, 'Registrazione storico e chiusura…');
-
-    try {
-      const result = await writeWithRecovery(
-        'finalize_invoice',
-        {invoiceId},
-        async () => {
-          const review = await verifyInvoiceReview(
-            invoiceId,
-            value => String(value.invoice?.status || '').toUpperCase() === 'COMPLETATA',
-            6
-          );
-          return review ? {
-            finalized: true,
-            historyRowsCreated: 0,
-            intelligence: {},
-            review
-          } : null;
-        }
-      );
-
-      const intelligence = result.intelligence || {};
-      const alerts =
-        Number(intelligence.priceNotifications || 0) +
-        Number(intelligence.marginNotifications || 0);
-
-      toast(
-        result.recovered
-          ? 'Fattura completata e verificata'
-          : `Fattura completata · ${result.historyRowsCreated || 0} prezzi registrati${alerts ? ` · ${alerts} alert` : ''}`
-      );
-
-      $('invoiceStatusFilter').value = '';
-      setLoader(false);
-      await navigate('invoices', {}, true);
-    } catch (error) {
-      toast(error.message);
-    } finally {
-      button.disabled = false;
-      setLoader(false);
-    }
+  async function loadHome() {
+    const { data: statusData } = await db.from('app_status_view').select('*').maybeSingle();
+    const s = statusData || {};
+    $('#statusGrid').innerHTML = [
+      ['Da elaborare',Number(s.received||0)+Number(s.processing||0),'processing'],
+      ['Da revisionare',s.to_review||0,'ready'],
+      ['Notifiche',s.unread_notifications||0,'notification'],
+      ['Sync pendenti',s.pending_sync||0,'sync']
+    ].map(([label,value])=>`<article class="status-card"><strong>${value}</strong><span>${label}</span></article>`).join('');
+    const { data, error } = await db.from('invoice_list_view').select('*').order('received_at',{ascending:false}).limit(6);
+    if (!error) { state.invoices = data || []; renderInvoiceCards($('#recentInvoices'), state.invoices); }
   }
 
   async function loadInvoices() {
-    const list = $('invoiceList');
-    list.innerHTML = '<div class="status-card">Caricamento…</div>';
-
-    try {
-      const result = await api('list_invoices', {
-        status: $('invoiceStatusFilter').value,
-        limit: 100
-      });
-
-      list.innerHTML = (result.invoices || []).map(invoice => {
-        const canReview = invoice.status === 'DA_REVISIONARE';
-        const isError = invoice.status === 'ERRORE_OCR';
-
-        return `<article class="invoice-card" data-invoice-id="${esc(invoice.id)}">
-          <div class="invoice-head">
-            <div>
-              <h3>${esc(invoice.supplier || 'Fornitore non ancora riconosciuto')}</h3>
-              <div class="muted small">${esc(invoice.documentDate)}${invoice.invoiceNumber ? ' · Doc. ' + esc(invoice.invoiceNumber) : ''}</div>
-            </div>
-            <span class="status-pill">${esc(invoice.status)}</span>
-          </div>
-          <div class="muted small" style="margin-top:8px">${esc(invoice.id)}${invoice.total !== '' ? ' · ' + money(invoice.total) : ''}</div>
-          ${invoice.notes ? `<div class="muted small" style="margin-top:6px">${esc(invoice.notes)}</div>` : ''}
-          ${canReview ? `<button class="btn primary" data-open-review="${esc(invoice.id)}">Revisiona</button>` : ''}
-          ${isError ? `<button class="btn secondary" data-open-error="${esc(invoice.id)}">Dettagli errore</button>` : ''}
-        </article>`;
-      }).join('') || '<div class="status-card">Nessuna fattura trovata.</div>';
-
-      qsa('[data-open-review]').forEach(button => {
-        button.addEventListener('click', () => openReview(button.dataset.openReview, true));
-      });
-
-      qsa('[data-open-error]').forEach(button => {
-        button.addEventListener('click', () => {
-          const card = button.closest('.invoice-card');
-          const note = card?.querySelector('.muted.small:last-of-type');
-          toast(note ? note.textContent : 'Controlla le note della fattura');
-        });
-      });
-    } catch (error) {
-      list.innerHTML = `<div class="status-card">${esc(error.message)}</div>`;
-    }
+    let q = db.from('invoice_list_view').select('*').order('received_at',{ascending:false}).limit(200);
+    if (state.invoiceFilter) q = q.eq('status',state.invoiceFilter);
+    const { data, error } = await q;
+    if (error) return toast(error.message,'error');
+    state.invoices = data || [];
+    renderInvoiceCards($('#invoiceList'), state.invoices);
   }
 
-  async function loadPrices() {
-    $('priceList').innerHTML = '<div class="status-card">Caricamento…</div>';
-    $('notificationList').innerHTML = '<div class="status-card">Caricamento notifiche…</div>';
+  function renderInvoiceCards(host, rows) {
+    host.innerHTML = rows.length ? rows.map(i => `
+      <article class="list-card clickable" data-invoice-id="${esc(i.legacy_id)}">
+        <div class="list-main"><div class="list-title">${esc(i.supplier_name)}</div>
+          <div class="list-meta"><span>${dateIt(i.document_date)}</span><span>${esc(i.invoice_number||'Numero da verificare')}</span><span>${Number(i.pending_count||0)} pendenti</span></div>
+        </div>
+        <div><div class="amount">${money(i.gross_total)}</div><div class="status-pill ${statusClass(i.status)}">${statusLabel(i.status)}</div></div>
+      </article>`).join('') : `<div class="empty">Nessuna fattura in questa sezione.</div>`;
+    host.querySelectorAll('[data-invoice-id]').forEach(el => el.addEventListener('click',()=>openInvoice(el.dataset.invoiceId)));
+  }
 
-    try {
-      const result = await api('get_price_dashboard');
-      state.allPrices = result.items || [];
-      state.notifications = result.notifications || [];
+  async function openInvoice(legacyId) {
+    const inv = state.invoices.find(i=>i.legacy_id===legacyId) || (await db.from('invoice_list_view').select('*').eq('legacy_id',legacyId).single()).data;
+    if (!inv) return;
+    if (inv.status === 'DA_REVISIONARE' || inv.status === 'ERRORE_OCR') return openReview(legacyId);
+    if (inv.drive_url) window.open(inv.drive_url,'_blank','noopener');
+    else toast(statusLabel(inv.status));
+  }
 
-      const categories = result.categories ||
-        Array.from(new Set(state.allPrices.map(item => item.category).filter(Boolean))).sort();
+  async function loadIngredients() {
+    const { data, error } = await db.from('price_dashboard_view').select('*').order('name').limit(2000);
+    if (error) return toast(error.message,'error');
+    state.ingredients = data || [];
+    const cats = [...new Set(state.ingredients.map(x=>x.category).filter(Boolean))].sort();
+    $('#categoryFilter').innerHTML = '<option value="">Tutte le categorie</option>'+cats.map(c=>`<option>${esc(c)}</option>`).join('');
+    renderPrices();
+  }
 
-      $('categoryFilter').innerHTML =
-        '<option value="">Tutte le categorie</option>' +
-        categories.map(category => `<option value="${esc(category)}">${esc(category)}</option>`).join('');
+  function renderPrices() {
+    const q = ($('#priceSearch').value || '').trim().toLowerCase();
+    const cat = $('#categoryFilter').value;
+    const rows = state.ingredients.filter(i => (!q || `${i.name} ${i.category} ${i.subcategory}`.toLowerCase().includes(q)) && (!cat || i.category===cat));
+    $('#priceList').innerHTML = rows.length ? rows.map(i=>`<article class="list-card clickable" data-ingredient-id="${i.id}"><div class="list-main"><div class="list-title">${esc(i.name)}</div><div class="list-meta"><span>${esc(i.category||'')}</span><span>${esc(i.supplier_name||'')}</span><span>${Number(i.history_count||0)} rilevazioni</span></div></div><div class="price-current">${money(i.current_price)}<div class="small muted">${esc(i.tracking_unit||'')}</div></div></article>`).join('') : '<div class="empty">Nessun ingrediente trovato.</div>';
+    $('#priceList').querySelectorAll('[data-ingredient-id]').forEach(el=>el.addEventListener('click',()=>openPrice(el.dataset.ingredientId)));
+  }
 
-      renderNotifications();
-      renderPriceFilter();
-    } catch (error) {
-      $('priceList').innerHTML = `<div class="status-card">${esc(error.message)}</div>`;
-      $('notificationList').innerHTML = '';
-    }
+  async function openPrice(id) {
+    const ingredient = byId(state.ingredients,id);
+    if (!ingredient) return;
+    $('#priceModalName').textContent = ingredient.name;
+    $('#priceModalCategory').textContent = [ingredient.category,ingredient.subcategory].filter(Boolean).join(' · ');
+    $('#priceModal').classList.remove('hidden'); document.body.style.overflow='hidden';
+    const { data, error } = await db.from('price_history').select('document_date,unit_price,previous_unit_price,change_percent,description,supplier_id,created_at').eq('ingredient_id',id).eq('status','ATTIVO').order('document_date',{ascending:true}).order('created_at',{ascending:true}).limit(500);
+    if (error) return toast(error.message,'error');
+    const hist = data || [];
+    $('#priceModalBody').innerHTML = `
+      <div class="price-kpis"><div class="price-kpi"><small>Prezzo attuale</small><strong>${money(ingredient.current_price)} ${esc(ingredient.tracking_unit||'')}</strong></div><div class="price-kpi"><small>Prezzo medio</small><strong>${money(ingredient.avg_price)}</strong></div><div class="price-kpi"><small>Minimo storico</small><strong>${money(ingredient.historical_min)}</strong></div><div class="price-kpi"><small>Massimo storico</small><strong>${money(ingredient.historical_max)}</strong></div></div>
+      <div class="chart-wrap"><canvas id="priceChart"></canvas></div>
+      <h3 class="history-title">Storico acquisti</h3>
+      <div>${hist.slice().reverse().map(h=>`<div class="history-row"><div><div>${dateIt(h.document_date)}</div><div class="small muted">${esc(h.description||'')}</div></div><div><strong>${money(h.unit_price)}</strong><div class="small ${Number(h.change_percent)>0?'':'muted'}">${num(h.change_percent)===null?'':`${Number(h.change_percent)>0?'+':''}${decimal(h.change_percent,2)}%`}</div></div></div>`).join('') || '<div class="empty">Nessuno storico disponibile.</div>'}</div>`;
+    if (state.priceChart) state.priceChart.destroy();
+    const canvas = $('#priceChart');
+    state.priceChart = new Chart(canvas,{type:'line',data:{labels:hist.map(h=>dateIt(h.document_date)),datasets:[{label:'Prezzo',data:hist.map(h=>Number(h.unit_price)),borderColor:'#dfa145',backgroundColor:'rgba(223,161,69,.12)',fill:true,tension:.28,pointRadius:3}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{ticks:{color:'#8e8985',maxRotation:0,autoSkip:true,maxTicksLimit:6},grid:{display:false}},y:{ticks:{color:'#8e8985',callback:v=>`${v} €`},grid:{color:'rgba(255,255,255,.06)'}}}}});
+  }
+
+  function closePrice() { $('#priceModal').classList.add('hidden'); document.body.style.overflow=''; if(state.priceChart){state.priceChart.destroy();state.priceChart=null;} }
+
+  async function loadNotifications() {
+    const { data, error } = await db.from('notifications').select('*').order('created_at',{ascending:false}).limit(200);
+    if (error) return;
+    state.notifications = data || [];
+    const unread = state.notifications.filter(n=>String(n.status)==='DA_LEGGERE').length;
+    $('#notificationBadge').textContent = unread;
+    $('#notificationBadge').classList.toggle('hidden',!unread);
+    renderNotifications();
   }
 
   function renderNotifications() {
-    const rows = state.notifications || [];
-    $('notificationCount').textContent = rows.length;
-
-    $('notificationList').innerHTML = rows.map(notification => {
-      const color = String(notification.color || 'NEUTRO').toLowerCase();
-      const type = String(notification.type || '').toUpperCase();
-      const isMargin = type === 'MARGINE';
-      const isInvoice = type === 'FATTURE_PRONTE' || type === 'ERRORE_FATTURA';
-
-      let value = '';
-      let detail = '';
-
-      if (isInvoice) {
-        value = notification.newValue === '' ? '' : fmt(notification.newValue, 0);
-        detail = notification.eventDate ? formatDateIt(notification.eventDate) : '';
-      } else if (isMargin) {
-        value = `${num(notification.changePoints) > 0 ? '+' : ''}${fmt(notification.changePoints, 2)} pt`;
-        detail = `${fmt(notification.previousValue, 2)}% → ${fmt(notification.newValue, 2)}%`;
-      } else {
-        value = `${num(notification.changePercent) > 0 ? '+' : ''}${fmt(notification.changePercent, 2)}%`;
-        detail = `${fmt(notification.previousValue, 5)} → ${fmt(notification.newValue, 5)} ${esc(notification.unit || '')}`;
-      }
-
-      return `<article class="notification-card sev-${esc(color)} clickable-notification" data-notification-id="${esc(notification.id)}">
-        <div class="notification-accent"></div>
-        <div class="notification-main">
-          <h4>${esc(notification.item || notification.type)}</h4>
-          <p>${esc(notification.detail || '')}</p>
-          ${detail ? `<p>${esc(detail)}</p>` : ''}
-        </div>
-        ${value ? `<div class="notification-value">${value}</div>` : ''}
-        <button class="ack-btn" type="button">Segna letta</button>
-      </article>`;
-    }).join('') || '<div class="status-card">Nessuna nuova notifica.</div>';
-
-    qsa('[data-notification-id]').forEach(card => {
-      card.addEventListener('click', event => {
-        if (event.target.closest('.ack-btn')) return;
-        const notification = state.notifications.find(item => item.id === card.dataset.notificationId);
-        if (notification) openNotificationTarget(notification);
-      });
-    });
-
-    qsa('[data-notification-id] .ack-btn').forEach(button => {
-      button.addEventListener('click', async event => {
-        event.stopPropagation();
-        const card = button.closest('[data-notification-id]');
-        const id = card.dataset.notificationId;
-        button.disabled = true;
-
-        try {
-          await writeWithRecovery(
-            'acknowledge_notification',
-            {notificationId: id},
-            async () => ({verified: true})
-          );
-          state.notifications = state.notifications.filter(item => item.id !== id);
-          renderNotifications();
-        } catch (error) {
-          button.disabled = false;
-          toast(error.message);
-        }
-      });
-    });
+    $('#notificationList').innerHTML = state.notifications.length ? state.notifications.map(n=>`<article class="list-card notification-card ${n.status==='DA_LEGGERE'?'':'read'}" data-notification-id="${n.id}"><span class="notification-dot"></span><div class="list-main"><div class="list-title">${esc(n.title)}</div><div class="list-meta"><span>${dateTimeIt(n.created_at)}</span><span>${esc(n.type)}</span></div><p class="small muted">${esc(n.body||'')}</p></div></article>`).join('') : '<div class="empty">Nessuna notifica.</div>';
+    $('#notificationList').querySelectorAll('[data-notification-id]').forEach(el=>el.addEventListener('click',()=>readNotification(el.dataset.notificationId,true)));
   }
 
-  async function openNotificationTarget(notification) {
-    const type = String(notification.type || '').toUpperCase();
-
-    if (type === 'FATTURE_PRONTE') {
-      if (notification.invoiceId) {
-        await openReview(notification.invoiceId, true);
-      } else {
-        $('invoiceStatusFilter').value = 'DA_REVISIONARE';
-        await navigate('invoices', {status: 'DA_REVISIONARE'}, true);
-      }
-      return;
+  async function readNotification(id, openTarget=false) {
+    const n = state.notifications.find(x=>x.id===id);
+    if (!n) return;
+    if (n.status==='DA_LEGGERE') {
+      const { error } = await db.from('notifications').update({status:'LETTA',read_at:new Date().toISOString()}).eq('id',id);
+      if (!error) { n.status='LETTA'; renderNotifications(); loadNotifications(); }
     }
-
-    if (type === 'ERRORE_FATTURA') {
-      $('invoiceStatusFilter').value = 'ERRORE_OCR';
-      await navigate('invoices', {status: 'ERRORE_OCR'}, true);
-      return;
-    }
-
-    if (type === 'PREZZO' && notification.ingredientId) {
-      await navigate('prices', {ingredientId: notification.ingredientId}, true);
-      return;
-    }
-
-    await navigate('prices', {notificationId: notification.id}, true);
+    if (openTarget && n.target_view==='review' && n.target_id) openReview(n.target_id);
+    if (openTarget && n.target_view==='prices' && n.ingredient_id) openPrice(n.ingredient_id);
+    else if (openTarget && n.target_view==='prices') navigate('prices');
+    if (openTarget && n.target_view==='invoices') navigate('invoices');
   }
 
-  function renderPriceFilter() {
-    const search = $('priceSearch').value.trim().toLowerCase();
-    const category = $('categoryFilter').value;
-
-    const items = state.allPrices.filter(item =>
-      (!search || String(item.ingredient || '').toLowerCase().includes(search)) &&
-      (!category || item.category === category)
-    );
-
-    $('priceList').innerHTML = items.map(item => {
-      const change = num(item.changePercent);
-      const changeClass = change === null ? 'flat' : change > 0 ? 'up' : change < 0 ? 'down' : 'flat';
-      const borderClass = change === null || change === 0
-        ? ''
-        : change < 0
-          ? 'alert-down'
-          : Math.abs(change) >= 7
-            ? 'alert-high'
-            : Math.abs(change) >= 3
-              ? 'alert-mid'
-              : 'alert-low';
-
-      const average90 = num(item.weightedAverage90Days);
-      const change90 = num(item.changeVs90DaysAveragePercent);
-      const change90Class = change90 === null ? 'flat' : change90 > 0 ? 'up' : change90 < 0 ? 'down' : 'flat';
-
-      return `<article class="price-card ${borderClass}" data-price-id="${esc(item.ingredientId)}">
-        <div class="price-head">
-          <div><h3>${esc(item.ingredient)}</h3><div class="muted small">${esc(item.category || 'Senza categoria')} · ${esc(item.supplier || '')}</div></div>
-          <div class="price-value">${fmt(item.latestPrice, 4)}</div>
-        </div>
-        <div class="meta-grid">
-          <div class="meta"><small>Precedente</small><strong>${item.previousPrice === '' ? '—' : fmt(item.previousPrice, 4)}</strong></div>
-          <div class="meta"><small>Variazione</small><strong class="delta ${changeClass}">${change === null ? '—' : (change > 0 ? '+' : '') + fmt(change, 2) + '%'}</strong></div>
-        </div>
-        <div class="price-submetrics">
-          <div class="meta"><small>Media 90 gg</small><strong>${average90 === null ? '—' : fmt(average90, 4)}</strong></div>
-          <div class="meta"><small>Vs media 90 gg</small><strong class="delta ${change90Class}">${change90 === null ? '—' : (change90 > 0 ? '+' : '') + fmt(change90, 2) + '%'}</strong></div>
-        </div>
-        <div class="muted small" style="margin-top:9px">${esc(item.unit)} · ultimo acquisto ${esc(formatDateIt(item.lastPurchaseDate || ''))}</div>
-      </article>`;
-    }).join('') || '<div class="status-card">Nessun prezzo disponibile.</div>';
-
-    qsa('[data-price-id]').forEach(card => {
-      card.addEventListener('click', () => openPriceDetail(card.dataset.priceId));
-    });
+  async function markAllRead() {
+    const ids = state.notifications.filter(n=>n.status==='DA_LEGGERE').map(n=>n.id);
+    if (!ids.length) return;
+    const { error } = await db.from('notifications').update({status:'LETTA',read_at:new Date().toISOString()}).in('id',ids);
+    if (error) toast(error.message,'error'); else loadNotifications();
   }
 
-  function openPriceDetail(id) {
-    const item = state.allPrices.find(value => value.ingredientId === id);
-    if (!item) return;
-
-    $('priceDetailTitle').textContent = item.ingredient;
-    $('priceDetailSubtitle').textContent = `${item.category || 'Senza categoria'} · ${item.unit || ''}`;
-
-    const kpis = [
-      ['Ultimo prezzo', fmt(item.latestPrice, 5) + ' ' + (item.unit || '')],
-      ['Prezzo precedente', item.previousPrice === '' ? '—' : fmt(item.previousPrice, 5) + ' ' + (item.unit || '')],
-      ['Media 90 gg', item.weightedAverage90Days === '' ? '—' : fmt(item.weightedAverage90Days, 5) + ' ' + (item.unit || '')],
-      ['Media storica', item.weightedAverageHistorical === '' ? '—' : fmt(item.weightedAverageHistorical, 5) + ' ' + (item.unit || '')],
-      ['Min storico', item.minHistoricalPrice === '' ? '—' : fmt(item.minHistoricalPrice, 5) + ' ' + (item.unit || '')],
-      ['Max storico', item.maxHistoricalPrice === '' ? '—' : fmt(item.maxHistoricalPrice, 5) + ' ' + (item.unit || '')]
-    ];
-
-    $('priceDetailKpis').innerHTML = kpis.map(kpi =>
-      `<div class="kpi-card"><small>${esc(kpi[0])}</small><strong>${esc(kpi[1])}</strong></div>`
-    ).join('');
-
-    const history = item.history || [];
-    $('priceHistoryTable').innerHTML =
-      '<div class="history-row head"><span>Data</span><span>Fornitore</span><span class="history-qty">Quantità</span><strong>Prezzo</strong></div>' +
-      history.slice().reverse().map(entry => `
-        <div class="history-row">
-          <span>${esc(formatDateIt(entry.date))}</span>
-          <span>${esc(entry.supplier || '—')}</span>
-          <span class="history-qty">${entry.quantity === '' ? '—' : fmt(entry.quantity, 3)}</span>
-          <strong>${fmt(entry.price, 5)}</strong>
-        </div>`).join('');
-
-    renderPriceChart(item);
-    $('priceDetailModal').classList.remove('hidden');
+  async function loadSettings() {
+    const { data, error } = await db.from('app_settings').select('*').eq('id',1).maybeSingle();
+    if (error) return;
+    state.settings = data;
+    $('#fcThreshold').value = Number(data?.food_cost_threshold_points ?? .5);
+    $('#mdcThreshold').value = Number(data?.mdc_threshold_points ?? .5);
   }
 
-  function closePriceDetail() {
-    $('priceDetailModal').classList.add('hidden');
-    if (state.priceChart) {
-      state.priceChart.destroy();
-      state.priceChart = null;
-    }
+  async function saveSettings() {
+    const fc = Number($('#fcThreshold').value), mdc = Number($('#mdcThreshold').value);
+    if (!Number.isFinite(fc)||fc<0||!Number.isFinite(mdc)||mdc<0) return toast('Soglie non valide','error');
+    const btn=$('#saveSettingsBtn'); setBusy(btn,true,'Salvataggio…');
+    try { await api('update_settings',{foodCostThresholdPoints:fc,mdcThresholdPoints:mdc}); toast('Impostazioni salvate','success'); await loadSettings(); }
+    catch(e){toast(e.message,'error')} finally{setBusy(btn,false)}
   }
 
-  function renderPriceChart(item) {
-    if (state.priceChart) state.priceChart.destroy();
-    if (!window.Chart) {
-      toast('Grafico non disponibile.');
-      return;
-    }
-
-    const history = item.history || [];
-    const context = $('priceChart').getContext('2d');
-
-    state.priceChart = new Chart(context, {
-      type: 'line',
-      data: {
-        labels: history.map(entry => formatDateIt(entry.date)),
-        datasets: [
-          {
-            label: 'Prezzo reale',
-            data: history.map(entry => num(entry.price)),
-            borderColor: '#DFA145',
-            backgroundColor: '#DFA145',
-            pointRadius: 4,
-            tension: 0,
-            spanGaps: false
-          },
-          {
-            label: 'Media ponderata 90 gg',
-            data: history.map(entry => num(entry.rollingAverage90Days)),
-            borderColor: '#8f939b',
-            backgroundColor: '#8f939b',
-            borderDash: [6, 4],
-            pointRadius: 0,
-            tension: 0.2,
-            spanGaps: true
-          }
-        ]
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        interaction: {mode: 'index', intersect: false},
-        plugins: {
-          legend: {labels: {color: '#f2f2f3'}},
-          tooltip: {
-            callbacks: {
-              label: context => `${context.dataset.label}: ${fmt(context.parsed.y, 5)} ${item.unit || ''}`
-            }
-          }
-        },
-        scales: {
-          x: {ticks: {color: '#aaaab0'}, grid: {color: 'rgba(255,255,255,.06)'}},
-          y: {ticks: {color: '#aaaab0'}, grid: {color: 'rgba(255,255,255,.06)'}}
-        }
-      }
-    });
+  function addUploadBatch() {
+    const frag = $('#uploadBatchTemplate').content.cloneNode(true);
+    const card = frag.querySelector('.upload-batch');
+    card.querySelector('.batch-files').addEventListener('change',e=>renderSelectedFiles(card,e.target.files));
+    card.querySelector('.remove-batch').addEventListener('click',()=>{card.remove();renumberBatches();});
+    $('#uploadBatches').appendChild(frag); renumberBatches();
   }
 
-  function formatDateIt(value) {
-    const text = String(value || '').trim();
-    const match = text.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-    return match ? `${match[3]}/${match[2]}/${match[1]}` : text;
+  function renumberBatches() { $$('#uploadBatches .upload-batch').forEach((c,i)=>{c.querySelector('.batch-number').textContent=i+1;c.querySelector('.remove-batch').classList.toggle('hidden',$$('#uploadBatches .upload-batch').length===1);}); }
+
+  function renderSelectedFiles(card, fileList) {
+    const files=Array.from(fileList||[]), host=card.querySelector('.file-preview-list');
+    host.innerHTML=files.map(f=>`<div class="file-preview"><span>${esc(f.name)}</span><span>${decimal(f.size/1024/1024,2)} MB</span></div>`).join('');
   }
 
-  function canonicalUnitClient(value) {
-    const raw = String(value || '').trim();
-    if (!raw) return '';
-
-    const unit = raw.toLowerCase().replace(/\s+/g, '');
-    if (['kg', '€/kg', '€kg', 'l', 'lt', '€/l', '€l'].includes(unit)) return '€/kg';
-    if (['pz', 'pz.', 'pezzo', 'pezzi', 'nr', '€/pz', '€/pezzo', '€pz'].includes(unit)) return '€/pz';
-    if (['ct', 'cf', 'conf', 'confezione', 'confezioni', '€/confezione', '€confezione'].includes(unit)) return '€/confezione';
-    return raw;
+  async function fileToBase64(file) {
+    return await new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(String(r.result).split(',')[1]);r.onerror=()=>reject(r.error);r.readAsDataURL(file);});
   }
 
-  function unitOptionsHtml(selected = '') {
-    const value = canonicalUnitClient(selected);
-    const all = [...state.units];
-    if (value && !all.includes(value)) all.push(value);
-
-    return [
-      '<option value="">— Seleziona —</option>',
-      ...all.map(unit => `<option value="${esc(unit)}" ${unit === value ? 'selected' : ''}>${esc(unit)}</option>`),
-      '<option value="__NEW__">＋ Aggiungi nuova unità</option>'
-    ].join('');
+  function validateBatch(card) {
+    const files=Array.from(card.querySelector('.batch-files').files||[]);
+    if (!files.length) throw new Error('Seleziona almeno un file per ogni fattura.');
+    if (files.length>cfg.MAX_FILES_PER_INVOICE) throw new Error(`Massimo ${cfg.MAX_FILES_PER_INVOICE} pagine per fattura.`);
+    if(files.length>1&&files.some(f=>f.type==='application/pdf')) throw new Error('Un PDF deve essere caricato da solo. Le fatture multipagina con più file devono contenere solo immagini.');
+    let total=0; files.forEach(f=>{if(f.size>cfg.MAX_FILE_MB*1024*1024) throw new Error(`${f.name} supera ${cfg.MAX_FILE_MB} MB.`);total+=f.size;});
+    if(total>cfg.MAX_INVOICE_MB*1024*1024) throw new Error(`Una fattura supera ${cfg.MAX_INVOICE_MB} MB complessivi.`);
+    return files;
   }
 
-  function populateUnitSelect(select, selected = '') {
-    select.innerHTML = unitOptionsHtml(selected);
-  }
-
-  function ensureOptionAndSelect(select, value) {
-    const normalized = canonicalUnitClient(value);
-    if (!normalized) return;
-
-    if (![...select.options].some(option => option.value === normalized)) {
-      const option = document.createElement('option');
-      option.value = normalized;
-      option.textContent = normalized;
-      select.insertBefore(option, select.lastElementChild);
-    }
-
-    select.value = normalized;
-  }
-
-  async function createUnitFromPrompt() {
-    const raw = window.prompt('Scrivi la nuova unità da salvare, ad esempio €/metro:');
-    if (!raw?.trim()) return '';
-
+  async function submitUploads() {
+    const cards=$$('#uploadBatches .upload-batch');
+    const btn=$('#submitUploadsBtn');
+    try { cards.forEach(validateBatch); } catch(e){return toast(e.message,'error')}
+    setBusy(btn,true,'Preparazione file…'); $('#uploadProgress').classList.remove('hidden');
+    let accepted=0;
     try {
-      const result = await api('create_tracking_unit', {unit: raw.trim()}, {attempts: 1});
-      state.units = result.units || state.units;
-      return result.unit;
-    } catch (error) {
-      toast(error.message);
-      return '';
-    }
-  }
-
-  function populateCategorySelect(selected = '') {
-    const values = [...state.categories];
-    if (selected && !values.includes(selected)) values.push(selected);
-
-    $('ingredientModalCategory').innerHTML =
-      '<option value="">— Seleziona categoria —</option>' +
-      values.sort((a, b) => a.localeCompare(b, 'it'))
-        .map(value => `<option value="${esc(value)}" ${value === selected ? 'selected' : ''}>${esc(value)}</option>`)
-        .join('') +
-      '<option value="__NEW__">＋ Aggiungi nuova categoria</option>';
-  }
-
-  function populateSubcategorySelect(category, selected = '') {
-    const values = [...(state.subcategoriesByCategory[category] || [])];
-    if (selected && !values.includes(selected)) values.push(selected);
-
-    $('ingredientModalSubcategory').innerHTML =
-      '<option value="">— Seleziona sottocategoria —</option>' +
-      values.sort((a, b) => a.localeCompare(b, 'it'))
-        .map(value => `<option value="${esc(value)}" ${value === selected ? 'selected' : ''}>${esc(value)}</option>`)
-        .join('') +
-      '<option value="__NEW__">＋ Aggiungi nuova sottocategoria</option>';
-  }
-
-  function handleCategorySelection() {
-    const select = $('ingredientModalCategory');
-    const isNew = select.value === '__NEW__';
-    $('ingredientModalNewCategoryWrap').classList.toggle('hidden', !isNew);
-    populateSubcategorySelect(isNew ? $('ingredientModalNewCategory').value.trim() : select.value, '');
-    $('ingredientModalNewSubcategoryWrap').classList.add('hidden');
-  }
-
-  function handleSubcategorySelection() {
-    $('ingredientModalNewSubcategoryWrap').classList.toggle(
-      'hidden',
-      $('ingredientModalSubcategory').value !== '__NEW__'
-    );
-  }
-
-  function selectedCategoryValue() {
-    return $('ingredientModalCategory').value === '__NEW__'
-      ? $('ingredientModalNewCategory').value.trim()
-      : $('ingredientModalCategory').value;
-  }
-
-  function selectedSubcategoryValue() {
-    return $('ingredientModalSubcategory').value === '__NEW__'
-      ? $('ingredientModalNewSubcategory').value.trim()
-      : $('ingredientModalSubcategory').value;
-  }
-
-  function openIngredientModal() {
-    $('ingredientModalTitle').textContent = 'Nuovo ingrediente / prodotto';
-    $('ingredientModalName').value = '';
-    populateCategorySelect('');
-    populateSubcategorySelect('', '');
-    $('ingredientModalNewCategoryWrap').classList.add('hidden');
-    $('ingredientModalNewSubcategoryWrap').classList.add('hidden');
-    $('ingredientModalNewCategory').value = '';
-    $('ingredientModalNewSubcategory').value = '';
-    populateUnitSelect($('ingredientModalUnit'), '');
-    $('ingredientModal').classList.remove('hidden');
-    window.setTimeout(() => $('ingredientModalName').focus(), 50);
-  }
-
-  function closeIngredientModal() {
-    $('ingredientModal').classList.add('hidden');
-    state.newIngredientRowId = '';
-  }
-
-  async function submitNewIngredient(event) {
-    event.preventDefault();
-
-    const unitSelect = $('ingredientModalUnit');
-    if (unitSelect.value === '__NEW__') {
-      const unit = await createUnitFromPrompt();
-      if (!unit) return;
-      populateUnitSelect(unitSelect, unit);
-    }
-
-    const category = selectedCategoryValue();
-    const subcategory = selectedSubcategoryValue();
-
-    if (!category) {
-      toast('Seleziona o inserisci una categoria');
-      return;
-    }
-    if (!subcategory) {
-      toast('Seleziona o inserisci una sottocategoria');
-      return;
-    }
-
-    try {
-      const result = await api('create_ingredient', {
-        name: $('ingredientModalName').value.trim(),
-        category,
-        subcategory,
-        unit: unitSelect.value
-      }, {attempts: 1});
-
-      state.ingredients.push(result.ingredient);
-      state.ingredients.sort((a, b) => a.name.localeCompare(b.name, 'it'));
-      state.categories = result.categories || state.categories;
-      state.subcategoriesByCategory = result.subcategoriesByCategory || state.subcategoriesByCategory;
-
-      const rowId = state.newIngredientRowId;
-      closeIngredientModal();
-
-      const element = document.querySelector(`[data-row-id="${cssEsc(rowId)}"]`);
-      if (element) {
-        const select = element.querySelector('.ingredient-select');
-        const option = document.createElement('option');
-        option.value = result.ingredient.id;
-        option.textContent = `${result.ingredient.name}${result.ingredient.category ? ' · ' + result.ingredient.category : ''}`;
-        select.appendChild(option);
-        select.value = result.ingredient.id;
-        ensureOptionAndSelect(element.querySelector('.tracking-unit-select'), result.ingredient.unit);
+      for(let i=0;i<cards.length;i++){
+        const card=cards[i], files=validateBatch(card);
+        $('#uploadProgress').textContent=`Invio fattura ${i+1} di ${cards.length}…`;
+        const encoded=[];
+        for(const f of files) encoded.push({fileName:f.name,mimeType:f.type||guessMime(f.name),base64Data:await fileToBase64(f)});
+        await api('upload_invoice',{files:encoded,documentDate:card.querySelector('.batch-date').value,supplier:card.querySelector('.batch-supplier').value.trim(),invoiceNumber:card.querySelector('.batch-number-input').value.trim(),total:card.querySelector('.batch-total').value,clientTimestamp:new Date().toISOString()});
+        accepted++;
       }
-
-      toast(`${result.ingredient.id} creato`);
-    } catch (error) {
-      toast(error.message);
-    }
+      $('#uploadProgress').textContent=`${accepted} fatture ricevute. L’elaborazione prosegue in background.`;
+      toast(`${accepted} fatture ricevute`,'success'); $('#uploadBatches').innerHTML=''; addUploadBatch(); await loadHome(); navigate('invoices');
+    } catch(e){toast(e.message,'error');$('#uploadProgress').textContent=`${accepted} fatture inviate prima dell’errore: ${e.message}`}
+    finally{setBusy(btn,false)}
   }
 
-  function setLoader(show, text = 'Elaborazione…') {
-    $('loader').classList.toggle('hidden', !show);
-    $('loaderText').textContent = text;
+  function guessMime(name){const ext=String(name).split('.').pop().toLowerCase();return ({pdf:'application/pdf',jpg:'image/jpeg',jpeg:'image/jpeg',png:'image/png',webp:'image/webp',heic:'image/heic',heif:'image/heif'})[ext]||'application/octet-stream'}
+
+  async function openReview(legacyId) {
+    $('#reviewDrawer').classList.remove('hidden'); document.body.style.overflow='hidden';
+    $('#reviewTitle').textContent=legacyId; $('#reviewBody').innerHTML='<div class="empty">Caricamento…</div>';
+    try {
+      const result=await api('get_review',{invoiceId:legacyId});
+      state.reviewInvoice=result.invoice; state.reviewRows=result.rows||[];
+      $('#reviewTitle').textContent=`${result.invoice.supplier_name||'Fornitore'} · ${result.invoice.invoice_number||legacyId}`;
+      renderReview();
+    } catch(e){$('#reviewBody').innerHTML=`<div class="empty">${esc(e.message)}</div>`;toast(e.message,'error')}
   }
 
-  function toast(message) {
-    const element = $('toast');
-    element.textContent = message;
-    element.classList.add('show');
-    window.clearTimeout(toast._timer);
-    toast._timer = window.setTimeout(() => element.classList.remove('show'), 4000);
+  function closeReview(){ $('#reviewDrawer').classList.add('hidden'); document.body.style.overflow=''; state.reviewInvoice=null;state.reviewRows=[]; }
+
+  function ingredientOptions(selected){return `<option value="">— Seleziona ingrediente —</option>`+state.ingredients.map(i=>`<option value="${i.id}" ${i.id===selected?'selected':''}>${esc(i.name)} · ${esc(i.tracking_unit||'')}</option>`).join('')}
+  function trackingUnitOptions(selected){
+    const units=['€/kg','€/l','€/pz','€/confezione'];
+    const current=String(selected||'').trim();
+    if(current&&!units.includes(current))units.push(current);
+    return units.map(u=>`<option value="${esc(u)}" ${u===current?'selected':''}>${esc(u)}</option>`).join('');
   }
 
-  function esc(value) {
-    return String(value ?? '').replace(/[&<>"]/g, character => ({
-      '&': '&amp;',
-      '<': '&lt;',
-      '>': '&gt;',
-      '"': '&quot;'
-    }[character]));
+  function renderReview(){
+    const host=$('#reviewBody');
+    const canOperate=['owner','manager','operator'].includes(String(state.profile?.role));
+    const confirmed=state.reviewRows.filter(r=>r.status==='CONFERMATO').length,excluded=state.reviewRows.filter(r=>r.status==='ESCLUSO').length,pending=state.reviewRows.length-confirmed-excluded;
+    const summary=`<div class="row-values review-summary"><div class="mini-kpi"><small>Righe</small><strong>${state.reviewRows.length}</strong></div><div class="mini-kpi"><small>Confermate</small><strong>${confirmed}</strong></div><div class="mini-kpi"><small>Da controllare</small><strong>${pending}</strong></div></div>`;
+    host.innerHTML=summary+state.reviewRows.map(r=>`<article class="review-row ${String(r.status).toLowerCase()}" data-row-id="${r.legacy_id}">
+      <div class="row-head"><div><div class="row-desc">${esc(r.description_raw)}</div><div class="row-code">${esc(r.item_code||'Nessun codice')} · riga ${r.line_number||'—'}</div></div><div class="row-state"><span class="status-pill ${r.status==='CONFERMATO'?'done':r.status==='SUGGERITO'?'ready':r.status==='ESCLUSO'?'error':'processing'}">${rowStatusLabel(r.status)}</span><div class="confidence">${Number(r.confidence||0)}%</div></div></div>
+      <div class="row-values"><div class="mini-kpi"><small>Q.tà documento</small><strong>${decimal(r.document_quantity,3)} ${esc(r.document_unit||'')}</strong></div><div class="mini-kpi"><small>Q.tà tracciata</small><strong>${decimal(r.normalized_quantity,3)} ${esc(r.tracking_unit||'')}</strong></div><div class="mini-kpi"><small>Imponibile</small><strong>${money(r.net_amount)}</strong></div></div>
+      <div class="row-edit">
+        <label><span>Ingrediente</span><select class="ingredient-select" ${canOperate?'':'disabled'}>${ingredientOptions(r.ingredient_id)}</select></label>
+        <label><span>Quantità tracciata</span><input class="normalized-qty" type="number" step="0.000001" min="0" value="${r.normalized_quantity??''}" placeholder="Quantità" ${canOperate?'':'disabled'}></label>
+        <label><span>Unità</span><select class="tracking-unit" ${canOperate?'':'disabled'}>${trackingUnitOptions(r.tracking_unit)}</select></label>
+        <label><span>Imponibile riga</span><input class="net-amount" type="number" step="0.0001" min="0" value="${r.net_amount??''}" placeholder="Imponibile" ${canOperate?'':'disabled'}></label>
+      </div>
+      <div class="row-actions ${canOperate?'':'hidden'}"><button class="secondary-button save-row">Salva</button><button class="primary-button confirm-row">Conferma</button><button class="danger-button exclude-row">Escludi</button></div>
+      <div class="small muted">${esc(r.review_notes||'')}</div>
+    </article>`).join('') || '<div class="empty">Nessuna riga estratta.</div>';
+    host.querySelectorAll('.review-row').forEach(card=>{
+      const id=card.dataset.rowId;
+      const ingredientSelect=card.querySelector('.ingredient-select');
+      ingredientSelect.addEventListener('change',()=>{
+        const ingredient=state.ingredients.find(i=>i.id===ingredientSelect.value);
+        if(ingredient?.tracking_unit)card.querySelector('.tracking-unit').value=ingredient.tracking_unit;
+      });
+      const save=card.querySelector('.save-row'),confirm=card.querySelector('.confirm-row'),exclude=card.querySelector('.exclude-row');
+      if(save)save.onclick=()=>updateReviewRow(card,id,false);
+      if(confirm)confirm.onclick=()=>updateReviewRow(card,id,true);
+      if(exclude)exclude.onclick=()=>excludeReviewRow(id);
+    });
   }
 
-  function fmt(value, digits = 2) {
-    const number = Number(value);
-    return Number.isFinite(number)
-      ? number.toLocaleString('it-IT', {maximumFractionDigits: digits})
-      : '—';
+  async function updateReviewRow(card,rowId,confirm){
+    const ingredientId=card.querySelector('.ingredient-select').value;
+    const qty=card.querySelector('.normalized-qty').value;
+    const trackingUnit=card.querySelector('.tracking-unit').value;
+    const netAmount=card.querySelector('.net-amount').value;
+    if(confirm&&!ingredientId) return toast('Seleziona un ingrediente','error');
+    if(confirm&&(!trackingUnit||qty===''||Number(qty)<=0)) return toast('Controlla quantità e unità','error');
+    try{
+      const result=await api(confirm?'confirm_row':'update_row',{rowId,ingredientId:ingredientId||null,normalizedQuantity:qty===''?null:Number(qty),trackingUnit:trackingUnit||null,netAmount:netAmount===''?null:Number(netAmount)});
+      const index=state.reviewRows.findIndex(r=>r.legacy_id===rowId);
+      if(index>=0&&result.row)state.reviewRows[index]=result.row;
+      renderReview();
+      toast(confirm?'Riga confermata':'Riga salvata','success');
+    }catch(e){toast(e.message,'error')}
   }
 
-  function money(value) {
-    const number = Number(value);
-    return Number.isFinite(number)
-      ? number.toLocaleString('it-IT', {style: 'currency', currency: 'EUR'})
-      : '—';
+
+  async function createIngredientFromReview(){
+    const name=window.prompt('Nome del nuovo ingrediente');
+    if(!name||!name.trim())return;
+    const unit=window.prompt('Unità di confronto: €/kg, €/l, €/pz oppure €/confezione','€/kg');
+    if(!unit||!unit.trim())return;
+    const category=window.prompt('Categoria (facoltativa)','')||'';
+    const subcategory=window.prompt('Sottocategoria (facoltativa)','')||'';
+    const btn=$('#newIngredientBtn');setBusy(btn,true,'Creazione…');
+    try{
+      const result=await api('create_ingredient',{name:name.trim(),trackingUnit:unit.trim(),category:category.trim(),subcategory:subcategory.trim()});
+      await loadIngredients();
+      toast(`Ingrediente ${result.ingredient?.name||name.trim()} creato`,'success');
+      renderReview();
+    }catch(e){toast(e.message,'error')}finally{setBusy(btn,false)}
   }
 
-  function num(value) {
-    if (value === '' || value === null || value === undefined) return null;
-    const number = Number(value);
-    return Number.isFinite(number) ? number : null;
+  async function excludeReviewRow(rowId){try{const result=await api('exclude_row',{rowId});const index=state.reviewRows.findIndex(r=>r.legacy_id===rowId);if(index>=0&&result.row)state.reviewRows[index]=result.row;renderReview();toast('Riga esclusa','success')}catch(e){toast(e.message,'error')}}
+  async function confirmAll(){try{const r=await api('confirm_all_valid',{invoiceId:state.reviewInvoice.legacy_id});state.reviewRows.forEach(row=>{if(row.status==='SUGGERITO'&&row.ingredient_id)row.status='CONFERMATO';});renderReview();toast(`${r.confirmed||0} righe confermate`,'success')}catch(e){toast(e.message,'error')}}
+  async function finalizeInvoice(){const btn=$('#finalizeBtn');setBusy(btn,true,'Finalizzazione…');try{const r=await api('finalize_invoice',{invoiceId:state.reviewInvoice.legacy_id});toast(r.duplicate?'Fattura duplicata bloccata':'Fattura finalizzata','success');closeReview();await Promise.all([loadHome(),loadInvoices(),loadIngredients(),loadNotifications()])}catch(e){toast(e.message,'error')}finally{setBusy(btn,false)}}
+
+  async function syncNow(){const btn=$('#syncBtn');setBusy(btn,true,'…');try{const r=await api('sync_now');const count=r.ingredients&&typeof r.ingredients==='object'?Number(r.ingredients.updated||0):Number(r.ingredients||0);toast(`Sincronizzazione completata: ${count} ingredienti`,'success');await Promise.all([loadHome(),loadIngredients(),loadNotifications()])}catch(e){toast(e.message,'error')}finally{setBusy(btn,false)}}
+
+  function startPolling(){stopPolling();state.pollingTimer=setInterval(async()=>{if(document.visibilityState!=='visible')return;await Promise.all([loadHome(),loadNotifications()]);if(state.view==='invoices')loadInvoices();},30000)}
+  function stopPolling(){if(state.pollingTimer){clearInterval(state.pollingTimer);state.pollingTimer=null}}
+
+  function bindEvents(){
+    $('#googleLoginBtn').onclick=loginGoogle;
+    $$('[data-nav]').forEach(b=>b.addEventListener('click',()=>navigate(b.dataset.nav)));
+    $('#notificationBtn').onclick=()=>navigate('notifications'); $('#syncBtn').onclick=syncNow;
+    $('#addBatchBtn').onclick=addUploadBatch; $('#submitUploadsBtn').onclick=submitUploads;
+    $('#priceSearch').oninput=renderPrices; $('#categoryFilter').onchange=renderPrices;
+    $('#priceCloseBtn').onclick=closePrice; $('#priceBackBtn').onclick=closePrice;
+    $('#reviewCloseBtn').onclick=closeReview; $('#reviewBackBtn').onclick=closeReview;
+    $('#newIngredientBtn').onclick=createIngredientFromReview; $('#confirmAllBtn').onclick=confirmAll; $('#finalizeBtn').onclick=finalizeInvoice;
+    $('#markAllReadBtn').onclick=markAllRead; $('#saveSettingsBtn').onclick=saveSettings;
+    $('#logoutBtn').onclick=async()=>{await db.auth.signOut();};
+    $('#invoiceFilters').querySelectorAll('button').forEach(b=>b.onclick=()=>{$('#invoiceFilters').querySelectorAll('button').forEach(x=>x.classList.remove('active'));b.classList.add('active');state.invoiceFilter=b.dataset.status;loadInvoices()});
+    $('#priceModal').addEventListener('click',e=>{if(e.target===$('#priceModal'))closePrice()});
+    window.addEventListener('online',()=>toast('Connessione ripristinata','success'));
   }
 
-  function cssEsc(value) {
-    return window.CSS?.escape
-      ? window.CSS.escape(String(value))
-      : String(value).replace(/"/g, '\\"');
-  }
+  bindEvents();
+  db.auth.onAuthStateChange((_event,session)=>setTimeout(()=>bootstrap(session),0));
+  db.auth.getSession().then(({data})=>bootstrap(data.session));
+  if('serviceWorker' in navigator) window.addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));
 })();
