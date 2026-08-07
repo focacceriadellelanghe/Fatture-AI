@@ -254,9 +254,8 @@ function addUploadBatch() {
   const card = frag.querySelector('.upload-batch');
   const input = card.querySelector('.batch-files');
 
-  // Memorizza tutte le pagine della singola fattura.
-  // Su iPhone una nuova foto normalmente sostituisce quella precedente:
-  // qui invece la aggiungiamo alla lista.
+  // Archivio permanente delle pagine di questa fattura.
+  // Non dipendiamo più da input.files al momento dell'invio.
   card._selectedFiles = [];
 
   input.addEventListener('change', e => {
@@ -268,26 +267,96 @@ function addUploadBatch() {
       ? card._selectedFiles
       : [];
 
-    const currentHasPdf = current.some(
-      f => (f.type || guessMime(f.name)) === 'application/pdf'
+    const currentHasPdf = current.some(file =>
+      (file.type || guessMime(file.name)) === 'application/pdf'
     );
 
-    const incomingHasPdf = incoming.some(
-      f => (f.type || guessMime(f.name)) === 'application/pdf'
+    const incomingHasPdf = incoming.some(file =>
+      (file.type || guessMime(file.name)) === 'application/pdf'
     );
 
-    // Un PDF deve restare da solo.
+    // PDF singolo oppure più immagini.
+    // Non permettiamo PDF + altre pagine.
     if (
       currentHasPdf ||
       (incomingHasPdf && (current.length > 0 || incoming.length > 1))
     ) {
-      input.value = '';
-
-      return toast(
+      toast(
         'Un PDF deve essere caricato da solo. Per una fattura multipagina usa più foto.',
         'error'
       );
+      return;
     }
+
+    const merged = current.slice();
+
+    incoming.forEach(file => {
+      const key = uploadFileKey(file);
+
+      const alreadyPresent = merged.some(existing =>
+        uploadFileKey(existing) === key
+      );
+
+      if (!alreadyPresent) {
+        merged.push(file);
+      }
+    });
+
+    if (merged.length > cfg.MAX_FILES_PER_INVOICE) {
+      toast(
+        `Massimo ${cfg.MAX_FILES_PER_INVOICE} pagine per fattura.`,
+        'error'
+      );
+      return;
+    }
+
+    let totalBytes = 0;
+
+    for (const file of merged) {
+      if (file.size > cfg.MAX_FILE_MB * 1024 * 1024) {
+        toast(
+          `${file.name} supera ${cfg.MAX_FILE_MB} MB.`,
+          'error'
+        );
+        return;
+      }
+
+      totalBytes += file.size;
+    }
+
+    if (totalBytes > cfg.MAX_INVOICE_MB * 1024 * 1024) {
+      toast(
+        `La fattura supera ${cfg.MAX_INVOICE_MB} MB complessivi.`,
+        'error'
+      );
+      return;
+    }
+
+    // Salviamo le pagine nella memoria della scheda.
+    card._selectedFiles = merged;
+
+    // Aggiorniamo la lista visibile.
+    renderSelectedFiles(card);
+
+    /*
+     * IMPORTANTE:
+     * NON fare input.value = '';
+     *
+     * Su Safari/iOS, dopo aver usato la fotocamera,
+     * svuotare immediatamente l'input può far perdere
+     * il File appena restituito.
+     */
+  });
+
+  card.querySelector('.remove-batch').addEventListener('click', () => {
+    card.remove();
+    renumberBatches();
+  });
+
+  $('#uploadBatches').appendChild(frag);
+
+  renumberBatches();
+}
 
     const merged = current.slice();
 
