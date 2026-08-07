@@ -246,310 +246,311 @@
   }
 
   function uploadFileKey(file) {
-  return [file.name, file.size, file.lastModified, file.type].join('::');
-}
+    return [file.name, file.size, file.lastModified, file.type].join('::');
+  }
 
-function addUploadBatch() {
-  const frag = $('#uploadBatchTemplate').content.cloneNode(true);
-  const card = frag.querySelector('.upload-batch');
-  const input = card.querySelector('.batch-files');
+  function addUploadBatch() {
+    const frag = $('#uploadBatchTemplate').content.cloneNode(true);
+    const card = frag.querySelector('.upload-batch');
+    const input = card.querySelector('.batch-files');
 
-  // Archivio permanente delle pagine di questa fattura.
-  // Non dipendiamo più da input.files al momento dell'invio.
-  card._selectedFiles = [];
+    card._selectedFiles = [];
 
-  input.addEventListener('change', e => {
-    const incoming = Array.from(e.target.files || []);
+    input.addEventListener('change', event => {
+      const incoming = Array.from(event.target.files || []);
+      if (!incoming.length) return;
 
-    if (!incoming.length) return;
+      const current = Array.isArray(card._selectedFiles)
+        ? card._selectedFiles
+        : [];
 
-    const current = Array.isArray(card._selectedFiles)
-      ? card._selectedFiles
-      : [];
-
-    const currentHasPdf = current.some(file =>
-      (file.type || guessMime(file.name)) === 'application/pdf'
-    );
-
-    const incomingHasPdf = incoming.some(file =>
-      (file.type || guessMime(file.name)) === 'application/pdf'
-    );
-
-    // PDF singolo oppure più immagini.
-    // Non permettiamo PDF + altre pagine.
-    if (
-      currentHasPdf ||
-      (incomingHasPdf && (current.length > 0 || incoming.length > 1))
-    ) {
-      toast(
-        'Un PDF deve essere caricato da solo. Per una fattura multipagina usa più foto.',
-        'error'
-      );
-      return;
-    }
-
-    const merged = current.slice();
-
-    incoming.forEach(file => {
-      const key = uploadFileKey(file);
-
-      const alreadyPresent = merged.some(existing =>
-        uploadFileKey(existing) === key
+      const currentHasPdf = current.some(file =>
+        (file.type || guessMime(file.name)) === 'application/pdf'
       );
 
-      if (!alreadyPresent) {
-        merged.push(file);
-      }
-    });
-
-    if (merged.length > cfg.MAX_FILES_PER_INVOICE) {
-      toast(
-        `Massimo ${cfg.MAX_FILES_PER_INVOICE} pagine per fattura.`,
-        'error'
+      const incomingHasPdf = incoming.some(file =>
+        (file.type || guessMime(file.name)) === 'application/pdf'
       );
-      return;
-    }
 
-    let totalBytes = 0;
-
-    for (const file of merged) {
-      if (file.size > cfg.MAX_FILE_MB * 1024 * 1024) {
+      if (
+        currentHasPdf ||
+        (incomingHasPdf && (current.length > 0 || incoming.length > 1))
+      ) {
         toast(
-          `${file.name} supera ${cfg.MAX_FILE_MB} MB.`,
+          'Un PDF deve essere caricato da solo. Per una fattura multipagina usa più foto.',
           'error'
         );
         return;
       }
 
-      totalBytes += file.size;
-    }
+      const merged = [...current];
 
-    if (totalBytes > cfg.MAX_INVOICE_MB * 1024 * 1024) {
-      toast(
-        `La fattura supera ${cfg.MAX_INVOICE_MB} MB complessivi.`,
-        'error'
-      );
-      return;
-    }
+      incoming.forEach(file => {
+        const key = uploadFileKey(file);
 
-    // Salviamo le pagine nella memoria della scheda.
-    card._selectedFiles = merged;
+        const alreadyPresent = merged.some(existing =>
+          uploadFileKey(existing) === key
+        );
 
-    // Aggiorniamo la lista visibile.
-    renderSelectedFiles(card);
+        if (!alreadyPresent) {
+          merged.push(file);
+        }
+      });
 
-    /*
-     * IMPORTANTE:
-     * NON fare input.value = '';
-     *
-     * Su Safari/iOS, dopo aver usato la fotocamera,
-     * svuotare immediatamente l'input può far perdere
-     * il File appena restituito.
-     */
-  });
-
-  card.querySelector('.remove-batch').addEventListener('click', () => {
-    card.remove();
-    renumberBatches();
-  });
-
-  $('#uploadBatches').appendChild(frag);
-
-  renumberBatches();
-}
-
-    const merged = current.slice();
-
-    incoming.forEach(file => {
-      const key = uploadFileKey(file);
-
-      if (!merged.some(existing => uploadFileKey(existing) === key)) {
-        merged.push(file);
-      }
-    });
-
-    if (merged.length > cfg.MAX_FILES_PER_INVOICE) {
-      input.value = '';
-
-      return toast(
-        `Massimo ${cfg.MAX_FILES_PER_INVOICE} pagine per fattura.`,
-        'error'
-      );
-    }
-
-    let total = 0;
-
-    for (const file of merged) {
-      if (file.size > cfg.MAX_FILE_MB * 1024 * 1024) {
-        input.value = '';
-
-        return toast(
-          `${file.name} supera ${cfg.MAX_FILE_MB} MB.`,
+      if (merged.length > cfg.MAX_FILES_PER_INVOICE) {
+        toast(
+          `Massimo ${cfg.MAX_FILES_PER_INVOICE} pagine per fattura.`,
           'error'
         );
+        return;
       }
 
-      total += file.size;
-    }
+      let totalBytes = 0;
 
-    if (total > cfg.MAX_INVOICE_MB * 1024 * 1024) {
-      input.value = '';
+      for (const file of merged) {
+        if (file.size > cfg.MAX_FILE_MB * 1024 * 1024) {
+          toast(
+            `${file.name} supera ${cfg.MAX_FILE_MB} MB.`,
+            'error'
+          );
+          return;
+        }
 
-      return toast(
-        `La fattura supera ${cfg.MAX_INVOICE_MB} MB complessivi.`,
-        'error'
-      );
-    }
+        totalBytes += file.size;
+      }
 
-    card._selectedFiles = merged;
+      if (totalBytes > cfg.MAX_INVOICE_MB * 1024 * 1024) {
+        toast(
+          `La fattura supera ${cfg.MAX_INVOICE_MB} MB complessivi.`,
+          'error'
+        );
+        return;
+      }
 
-    renderSelectedFiles(card);
+      card._selectedFiles = merged;
 
-    // Svuotiamo l'input vero e proprio.
-    // Le foto rimangono comunque salvate in card._selectedFiles.
-    // Questo permette di riaprire la fotocamera e aggiungere un'altra pagina.
-    input.value = '';
-  });
-
-  card.querySelector('.remove-batch').addEventListener('click', () => {
-    card.remove();
-    renumberBatches();
-  });
-
-  $('#uploadBatches').appendChild(frag);
-
-  renumberBatches();
-}
-
-function renumberBatches() {
-  $$('#uploadBatches .upload-batch').forEach((card, index) => {
-    card.querySelector('.batch-number').textContent = index + 1;
-
-    card
-      .querySelector('.remove-batch')
-      .classList.toggle(
-        'hidden',
-        $$('#uploadBatches .upload-batch').length === 1
-      );
-  });
-}
-
-function renderSelectedFiles(card) {
-  const files = Array.isArray(card._selectedFiles)
-    ? card._selectedFiles
-    : [];
-
-  const host = card.querySelector('.file-preview-list');
-
-  host.innerHTML = files.map((file, index) => `
-    <div class="file-preview" data-file-index="${index}">
-      <div class="file-preview-main">
-        <strong>Pagina ${index + 1}</strong>
-        <span class="file-preview-name">${esc(file.name)}</span>
-      </div>
-
-      <span class="file-preview-size">
-        ${decimal(file.size / 1024 / 1024, 2)} MB
-      </span>
-
-      <button
-        type="button"
-        class="file-remove text-button"
-        aria-label="Rimuovi pagina ${index + 1}">
-        ×
-      </button>
-    </div>
-  `).join('');
-
-  host.querySelectorAll('.file-remove').forEach((button, index) => {
-    button.addEventListener('click', () => {
-      card._selectedFiles.splice(index, 1);
       renderSelectedFiles(card);
     });
-  });
-}
 
-  function renumberBatches() { $$('#uploadBatches .upload-batch').forEach((c,i)=>{c.querySelector('.batch-number').textContent=i+1;c.querySelector('.remove-batch').classList.toggle('hidden',$$('#uploadBatches .upload-batch').length===1);}); }
+    card.querySelector('.remove-batch').addEventListener('click', () => {
+      card.remove();
+      renumberBatches();
+    });
 
-  function renderSelectedFiles(card, fileList) {
-    const files=Array.from(fileList||[]), host=card.querySelector('.file-preview-list');
-    host.innerHTML=files.map(f=>`<div class="file-preview"><span>${esc(f.name)}</span><span>${decimal(f.size/1024/1024,2)} MB</span></div>`).join('');
+    $('#uploadBatches').appendChild(frag);
+
+    renumberBatches();
+  }
+
+  function renumberBatches() {
+    const cards = $$('#uploadBatches .upload-batch');
+
+    cards.forEach((card, index) => {
+      card.querySelector('.batch-number').textContent = index + 1;
+
+      card
+        .querySelector('.remove-batch')
+        .classList.toggle(
+          'hidden',
+          cards.length === 1
+        );
+    });
+  }
+
+  function renderSelectedFiles(card) {
+    const files = Array.isArray(card._selectedFiles)
+      ? card._selectedFiles
+      : [];
+
+    const host = card.querySelector('.file-preview-list');
+
+    host.innerHTML = files.map((file, index) => `
+      <div class="file-preview" data-file-index="${index}">
+        <div class="file-preview-main">
+          <strong>Pagina ${index + 1}</strong>
+          <span class="file-preview-name">${esc(file.name)}</span>
+        </div>
+
+        <span class="file-preview-size">
+          ${decimal(file.size / 1024 / 1024, 2)} MB
+        </span>
+
+        <button
+          type="button"
+          class="file-remove text-button"
+          aria-label="Rimuovi pagina ${index + 1}">
+          ×
+        </button>
+      </div>
+    `).join('');
+
+    host.querySelectorAll('.file-remove').forEach(button => {
+      button.addEventListener('click', () => {
+        const row = button.closest('[data-file-index]');
+        const index = Number(row.dataset.fileIndex);
+
+        card._selectedFiles.splice(index, 1);
+
+        renderSelectedFiles(card);
+      });
+    });
   }
 
   async function fileToBase64(file) {
-    return await new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(String(r.result).split(',')[1]);r.onerror=()=>reject(r.error);r.readAsDataURL(file);});
+    return await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+
+      reader.onload = () => {
+        resolve(String(reader.result).split(',')[1]);
+      };
+
+      reader.onerror = () => {
+        reject(reader.error);
+      };
+
+      reader.readAsDataURL(file);
+    });
   }
 
   function validateBatch(card) {
-  const files = Array.isArray(card._selectedFiles)
-    ? card._selectedFiles
-    : [];
+    const files = Array.isArray(card._selectedFiles)
+      ? card._selectedFiles
+      : [];
 
-  if (!files.length) {
-    throw new Error('Seleziona almeno un file per ogni fattura.');
-  }
-
-  if (files.length > cfg.MAX_FILES_PER_INVOICE) {
-    throw new Error(
-      `Massimo ${cfg.MAX_FILES_PER_INVOICE} pagine per fattura.`
-    );
-  }
-
-  if (
-    files.length > 1 &&
-    files.some(
-      f => (f.type || guessMime(f.name)) === 'application/pdf'
-    )
-  ) {
-    throw new Error(
-      'Un PDF deve essere caricato da solo. Le fatture multipagina con più file devono contenere solo immagini.'
-    );
-  }
-
-  let total = 0;
-
-  files.forEach(file => {
-    if (file.size > cfg.MAX_FILE_MB * 1024 * 1024) {
+    if (!files.length) {
       throw new Error(
-        `${file.name} supera ${cfg.MAX_FILE_MB} MB.`
+        'Seleziona almeno un file per ogni fattura.'
       );
     }
 
-    total += file.size;
-  });
+    if (files.length > cfg.MAX_FILES_PER_INVOICE) {
+      throw new Error(
+        `Massimo ${cfg.MAX_FILES_PER_INVOICE} pagine per fattura.`
+      );
+    }
 
-  if (total > cfg.MAX_INVOICE_MB * 1024 * 1024) {
-    throw new Error(
-      `Una fattura supera ${cfg.MAX_INVOICE_MB} MB complessivi.`
-    );
+    if (
+      files.length > 1 &&
+      files.some(file =>
+        (file.type || guessMime(file.name)) === 'application/pdf'
+      )
+    ) {
+      throw new Error(
+        'Un PDF deve essere caricato da solo. Le fatture multipagina con più file devono contenere solo immagini.'
+      );
+    }
+
+    let totalBytes = 0;
+
+    files.forEach(file => {
+      if (file.size > cfg.MAX_FILE_MB * 1024 * 1024) {
+        throw new Error(
+          `${file.name} supera ${cfg.MAX_FILE_MB} MB.`
+        );
+      }
+
+      totalBytes += file.size;
+    });
+
+    if (totalBytes > cfg.MAX_INVOICE_MB * 1024 * 1024) {
+      throw new Error(
+        `Una fattura supera ${cfg.MAX_INVOICE_MB} MB complessivi.`
+      );
+    }
+
+    return files;
   }
-
-  return files;
-}
 
   async function submitUploads() {
-    const cards=$$('#uploadBatches .upload-batch');
-    const btn=$('#submitUploadsBtn');
-    try { cards.forEach(validateBatch); } catch(e){return toast(e.message,'error')}
-    setBusy(btn,true,'Preparazione file…'); $('#uploadProgress').classList.remove('hidden');
-    let accepted=0;
+    const cards = $$('#uploadBatches .upload-batch');
+    const btn = $('#submitUploadsBtn');
+
     try {
-      for(let i=0;i<cards.length;i++){
-        const card=cards[i], files=validateBatch(card);
-        $('#uploadProgress').textContent=`Invio fattura ${i+1} di ${cards.length}…`;
-        const encoded=[];
-        for(const f of files) encoded.push({fileName:f.name,mimeType:f.type||guessMime(f.name),base64Data:await fileToBase64(f)});
-        await api('upload_invoice',{files:encoded,documentDate:card.querySelector('.batch-date').value,supplier:card.querySelector('.batch-supplier').value.trim(),invoiceNumber:card.querySelector('.batch-number-input').value.trim(),total:card.querySelector('.batch-total').value,clientTimestamp:new Date().toISOString()});
+      cards.forEach(validateBatch);
+    } catch (e) {
+      return toast(e.message, 'error');
+    }
+
+    setBusy(btn, true, 'Preparazione file…');
+
+    $('#uploadProgress').classList.remove('hidden');
+
+    let accepted = 0;
+
+    try {
+      for (let i = 0; i < cards.length; i++) {
+        const card = cards[i];
+        const files = validateBatch(card);
+
+        $('#uploadProgress').textContent =
+          `Invio fattura ${i + 1} di ${cards.length}…`;
+
+        const encoded = [];
+
+        for (const file of files) {
+          encoded.push({
+            fileName: file.name,
+            mimeType: file.type || guessMime(file.name),
+            base64Data: await fileToBase64(file)
+          });
+        }
+
+        await api('upload_invoice', {
+          files: encoded,
+          documentDate: card.querySelector('.batch-date').value,
+          supplier: card.querySelector('.batch-supplier').value.trim(),
+          invoiceNumber: card.querySelector('.batch-number-input').value.trim(),
+          total: card.querySelector('.batch-total').value,
+          clientTimestamp: new Date().toISOString()
+        });
+
         accepted++;
       }
-      $('#uploadProgress').textContent=`${accepted} fatture ricevute. L’elaborazione prosegue in background.`;
-      toast(`${accepted} fatture ricevute`,'success'); $('#uploadBatches').innerHTML=''; addUploadBatch(); await loadHome(); navigate('invoices');
-    } catch(e){toast(e.message,'error');$('#uploadProgress').textContent=`${accepted} fatture inviate prima dell’errore: ${e.message}`}
-    finally{setBusy(btn,false)}
+
+      $('#uploadProgress').textContent =
+        `${accepted} fatture ricevute. L’elaborazione prosegue in background.`;
+
+      toast(
+        `${accepted} fatture ricevute`,
+        'success'
+      );
+
+      $('#uploadBatches').innerHTML = '';
+
+      addUploadBatch();
+
+      await loadHome();
+
+      navigate('invoices');
+
+    } catch (e) {
+      toast(e.message, 'error');
+
+      $('#uploadProgress').textContent =
+        `${accepted} fatture inviate prima dell’errore: ${e.message}`;
+
+    } finally {
+      setBusy(btn, false);
+    }
   }
 
-  function guessMime(name){const ext=String(name).split('.').pop().toLowerCase();return ({pdf:'application/pdf',jpg:'image/jpeg',jpeg:'image/jpeg',png:'image/png',webp:'image/webp',heic:'image/heic',heif:'image/heif'})[ext]||'application/octet-stream'}
+  function guessMime(name) {
+    const ext = String(name)
+      .split('.')
+      .pop()
+      .toLowerCase();
 
+    return ({
+      pdf: 'application/pdf',
+      jpg: 'image/jpeg',
+      jpeg: 'image/jpeg',
+      png: 'image/png',
+      webp: 'image/webp',
+      heic: 'image/heic',
+      heif: 'image/heif'
+    })[ext] || 'application/octet-stream';
+  }
+  
   async function openReview(legacyId) {
     $('#reviewDrawer').classList.remove('hidden'); document.body.style.overflow='hidden';
     $('#reviewTitle').textContent=legacyId; $('#reviewBody').innerHTML='<div class="empty">Caricamento…</div>';
