@@ -245,13 +245,160 @@
     catch(e){toast(e.message,'error')} finally{setBusy(btn,false)}
   }
 
-  function addUploadBatch() {
-    const frag = $('#uploadBatchTemplate').content.cloneNode(true);
-    const card = frag.querySelector('.upload-batch');
-    card.querySelector('.batch-files').addEventListener('change',e=>renderSelectedFiles(card,e.target.files));
-    card.querySelector('.remove-batch').addEventListener('click',()=>{card.remove();renumberBatches();});
-    $('#uploadBatches').appendChild(frag); renumberBatches();
-  }
+  function uploadFileKey(file) {
+  return [file.name, file.size, file.lastModified, file.type].join('::');
+}
+
+function addUploadBatch() {
+  const frag = $('#uploadBatchTemplate').content.cloneNode(true);
+  const card = frag.querySelector('.upload-batch');
+  const input = card.querySelector('.batch-files');
+
+  // Memorizza tutte le pagine della singola fattura.
+  // Su iPhone una nuova foto normalmente sostituisce quella precedente:
+  // qui invece la aggiungiamo alla lista.
+  card._selectedFiles = [];
+
+  input.addEventListener('change', e => {
+    const incoming = Array.from(e.target.files || []);
+
+    if (!incoming.length) return;
+
+    const current = Array.isArray(card._selectedFiles)
+      ? card._selectedFiles
+      : [];
+
+    const currentHasPdf = current.some(
+      f => (f.type || guessMime(f.name)) === 'application/pdf'
+    );
+
+    const incomingHasPdf = incoming.some(
+      f => (f.type || guessMime(f.name)) === 'application/pdf'
+    );
+
+    // Un PDF deve restare da solo.
+    if (
+      currentHasPdf ||
+      (incomingHasPdf && (current.length > 0 || incoming.length > 1))
+    ) {
+      input.value = '';
+
+      return toast(
+        'Un PDF deve essere caricato da solo. Per una fattura multipagina usa più foto.',
+        'error'
+      );
+    }
+
+    const merged = current.slice();
+
+    incoming.forEach(file => {
+      const key = uploadFileKey(file);
+
+      if (!merged.some(existing => uploadFileKey(existing) === key)) {
+        merged.push(file);
+      }
+    });
+
+    if (merged.length > cfg.MAX_FILES_PER_INVOICE) {
+      input.value = '';
+
+      return toast(
+        `Massimo ${cfg.MAX_FILES_PER_INVOICE} pagine per fattura.`,
+        'error'
+      );
+    }
+
+    let total = 0;
+
+    for (const file of merged) {
+      if (file.size > cfg.MAX_FILE_MB * 1024 * 1024) {
+        input.value = '';
+
+        return toast(
+          `${file.name} supera ${cfg.MAX_FILE_MB} MB.`,
+          'error'
+        );
+      }
+
+      total += file.size;
+    }
+
+    if (total > cfg.MAX_INVOICE_MB * 1024 * 1024) {
+      input.value = '';
+
+      return toast(
+        `La fattura supera ${cfg.MAX_INVOICE_MB} MB complessivi.`,
+        'error'
+      );
+    }
+
+    card._selectedFiles = merged;
+
+    renderSelectedFiles(card);
+
+    // Svuotiamo l'input vero e proprio.
+    // Le foto rimangono comunque salvate in card._selectedFiles.
+    // Questo permette di riaprire la fotocamera e aggiungere un'altra pagina.
+    input.value = '';
+  });
+
+  card.querySelector('.remove-batch').addEventListener('click', () => {
+    card.remove();
+    renumberBatches();
+  });
+
+  $('#uploadBatches').appendChild(frag);
+
+  renumberBatches();
+}
+
+function renumberBatches() {
+  $$('#uploadBatches .upload-batch').forEach((card, index) => {
+    card.querySelector('.batch-number').textContent = index + 1;
+
+    card
+      .querySelector('.remove-batch')
+      .classList.toggle(
+        'hidden',
+        $$('#uploadBatches .upload-batch').length === 1
+      );
+  });
+}
+
+function renderSelectedFiles(card) {
+  const files = Array.isArray(card._selectedFiles)
+    ? card._selectedFiles
+    : [];
+
+  const host = card.querySelector('.file-preview-list');
+
+  host.innerHTML = files.map((file, index) => `
+    <div class="file-preview" data-file-index="${index}">
+      <div class="file-preview-main">
+        <strong>Pagina ${index + 1}</strong>
+        <span class="file-preview-name">${esc(file.name)}</span>
+      </div>
+
+      <span class="file-preview-size">
+        ${decimal(file.size / 1024 / 1024, 2)} MB
+      </span>
+
+      <button
+        type="button"
+        class="file-remove text-button"
+        aria-label="Rimuovi pagina ${index + 1}">
+        ×
+      </button>
+    </div>
+  `).join('');
+
+  host.querySelectorAll('.file-remove').forEach((button, index) => {
+    button.addEventListener('click', () => {
+      card._selectedFiles.splice(index, 1);
+      renderSelectedFiles(card);
+    });
+  });
+}
 
   function renumberBatches() { $$('#uploadBatches .upload-batch').forEach((c,i)=>{c.querySelector('.batch-number').textContent=i+1;c.querySelector('.remove-batch').classList.toggle('hidden',$$('#uploadBatches .upload-batch').length===1);}); }
 
@@ -265,14 +412,51 @@
   }
 
   function validateBatch(card) {
-    const files=Array.from(card.querySelector('.batch-files').files||[]);
-    if (!files.length) throw new Error('Seleziona almeno un file per ogni fattura.');
-    if (files.length>cfg.MAX_FILES_PER_INVOICE) throw new Error(`Massimo ${cfg.MAX_FILES_PER_INVOICE} pagine per fattura.`);
-    if(files.length>1&&files.some(f=>f.type==='application/pdf')) throw new Error('Un PDF deve essere caricato da solo. Le fatture multipagina con più file devono contenere solo immagini.');
-    let total=0; files.forEach(f=>{if(f.size>cfg.MAX_FILE_MB*1024*1024) throw new Error(`${f.name} supera ${cfg.MAX_FILE_MB} MB.`);total+=f.size;});
-    if(total>cfg.MAX_INVOICE_MB*1024*1024) throw new Error(`Una fattura supera ${cfg.MAX_INVOICE_MB} MB complessivi.`);
-    return files;
+  const files = Array.isArray(card._selectedFiles)
+    ? card._selectedFiles
+    : [];
+
+  if (!files.length) {
+    throw new Error('Seleziona almeno un file per ogni fattura.');
   }
+
+  if (files.length > cfg.MAX_FILES_PER_INVOICE) {
+    throw new Error(
+      `Massimo ${cfg.MAX_FILES_PER_INVOICE} pagine per fattura.`
+    );
+  }
+
+  if (
+    files.length > 1 &&
+    files.some(
+      f => (f.type || guessMime(f.name)) === 'application/pdf'
+    )
+  ) {
+    throw new Error(
+      'Un PDF deve essere caricato da solo. Le fatture multipagina con più file devono contenere solo immagini.'
+    );
+  }
+
+  let total = 0;
+
+  files.forEach(file => {
+    if (file.size > cfg.MAX_FILE_MB * 1024 * 1024) {
+      throw new Error(
+        `${file.name} supera ${cfg.MAX_FILE_MB} MB.`
+      );
+    }
+
+    total += file.size;
+  });
+
+  if (total > cfg.MAX_INVOICE_MB * 1024 * 1024) {
+    throw new Error(
+      `Una fattura supera ${cfg.MAX_INVOICE_MB} MB complessivi.`
+    );
+  }
+
+  return files;
+}
 
   async function submitUploads() {
     const cards=$$('#uploadBatches .upload-batch');
