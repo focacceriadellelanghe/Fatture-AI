@@ -5,3 +5,136 @@
 @media(min-width:720px){.status-grid{grid-template-columns:repeat(4,1fr)}.main-content{padding-top:28px}.price-modal-card{height:min(90dvh,850px)}}
 @media(max-width:520px){.main-content{padding-left:12px;padding-right:12px}.form-grid{grid-template-columns:1fr}.search-row{grid-template-columns:1fr}.drawer-footer{flex-direction:column}.row-edit{grid-template-columns:1fr}.price-modal-card{width:100%;height:100dvh;max-height:100dvh;border:0;border-radius:0}.price-modal-header{padding-top:calc(10px + env(safe-area-inset-top))}.chart-wrap{height:210px}}
 .row-state{display:flex;flex-direction:column;align-items:flex-end;gap:6px}.review-summary{position:sticky;top:0;z-index:1;margin:0 0 12px;background:rgba(11,11,12,.96);padding:8px 0}.review-summary .mini-kpi{text-align:center}
+/* ===== HOTFIX iPhone layout / spacing ===== */
+
+/* Evita overflow orizzontali nei contenitori */
+.upload-batch,
+.panel,
+.list-card,
+.status-card,
+.search-row,
+.form-grid,
+.field {
+  min-width: 0;
+}
+
+.form-grid > .field,
+.search-row > * {
+  min-width: 0;
+}
+
+/* Input sempre contenuti dentro il box */
+.batch-date,
+.field input,
+.field select,
+.search-row input,
+.search-row select,
+.row-edit input,
+.row-edit select {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+}
+
+/* Safari iPhone: il date input tende a “scappare” */
+.field input[type="date"],
+.batch-date {
+  display: block;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+/* Lista prezzi: mantieni il prezzo dentro la card */
+.list-card {
+  width: 100%;
+  justify-content: space-between;
+  align-items: center;
+  gap: 14px;
+}
+
+.list-main {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.price-current {
+  flex: 0 0 auto;
+  min-width: 84px;
+  margin-left: auto;
+  text-align: right;
+}
+
+/* Più respiro nella sezione prezzi */
+#priceList {
+  gap: 14px;
+}
+
+[data-view="prices"] .search-row {
+  margin-bottom: 18px;
+  gap: 12px;
+}
+
+/* Più respiro nella sezione impostazioni */
+[data-view="settings"] {
+  display: grid;
+  gap: 16px;
+}
+
+[data-view="settings"] .panel {
+  display: grid;
+  gap: 14px;
+  padding: 20px;
+}
+
+[data-view="settings"] .panel h2 {
+  margin: 0 0 4px;
+}
+
+[data-view="settings"] .field {
+  gap: 8px;
+}
+
+.setting-row {
+  padding: 8px 0 14px;
+  margin-bottom: 2px;
+}
+
+/* Più aria generale tra form e contenuti */
+.form-grid {
+  gap: 14px;
+}
+
+.field {
+  gap: 8px;
+}
+
+.field > span {
+  line-height: 1.35;
+}
+
+.primary-button,
+.secondary-button,
+.danger-button {
+  min-height: 52px;
+}
+
+/* Mobile fine-tuning */
+@media (max-width: 520px) {
+  .main-content {
+    padding: 18px 14px 34px;
+  }
+
+  .panel,
+  .list-card {
+    padding: 18px 16px;
+  }
+
+  .search-row {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
+  .price-current {
+    min-width: 88px;
+  }
+}
