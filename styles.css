@@ -138,3 +138,148 @@
     min-width: 88px;
   }
 }
+/* ===== V2.1.3 - Spaziatura globale pannelli e fix viste ===== */
+
+/* Le viste non attive devono sempre restare nascoste */
+.view {
+  display: none;
+}
+
+.view.active {
+  display: block;
+}
+
+/* Impostazioni usa la griglia SOLO quando è la vista attiva */
+[data-view="settings"].active {
+  display: grid;
+  gap: 20px;
+}
+
+/* Sicurezza: impedisce a Impostazioni di apparire nelle altre sezioni */
+[data-view="settings"]:not(.active) {
+  display: none !important;
+}
+
+
+/* =========================================================
+   SPAZIATURA TRA I BOX PRINCIPALI
+   ========================================================= */
+
+/* Tutti i contenitori verticali */
+.stack {
+  gap: 16px;
+}
+
+/* I pannelli grandi non devono mai essere attaccati */
+[data-view="settings"] > .panel + .panel {
+  margin-top: 4px;
+}
+
+/* Carica fatture: spazio tra scheda fattura e comandi */
+#uploadBatches {
+  margin-bottom: 18px;
+}
+
+/* Se ci sono più fatture, separale chiaramente */
+#uploadBatches .upload-batch + .upload-batch {
+  margin-top: 18px;
+}
+
+/* Pulsanti principali della pagina Carica */
+#addBatchBtn {
+  margin-top: 0;
+  margin-bottom: 14px;
+}
+
+#submitUploadsBtn {
+  margin-top: 0;
+  margin-bottom: 18px;
+}
+
+/* Eventuale box di avanzamento */
+#uploadProgress:not(.hidden) {
+  margin-top: 18px;
+}
+
+
+/* =========================================================
+   SPAZI INTERNI AI PANNELLI
+   ========================================================= */
+
+.panel {
+  margin-bottom: 0;
+}
+
+/* Titoli dei pannelli */
+.panel > h2 {
+  margin-top: 0;
+  margin-bottom: 18px;
+}
+
+/* Campi consecutivi */
+.panel .field + .field {
+  margin-top: 12px;
+}
+
+/* Pulsante dopo i campi */
+.panel .field + .primary-button,
+.panel .setting-row + .field {
+  margin-top: 10px;
+}
+
+/* Account */
+.key-values {
+  margin-top: 12px;
+  margin-bottom: 22px;
+}
+
+/* Versione */
+[data-view="settings"] .panel:last-child p {
+  margin-top: 12px;
+  margin-bottom: 0;
+}
+
+
+/* =========================================================
+   LISTE / PREZZI / NOTIFICHE
+   ========================================================= */
+
+#priceList,
+#invoiceList,
+#notificationList,
+#recentInvoices {
+  gap: 16px;
+}
+
+/* Ogni card resta visivamente separata */
+.list-card + .list-card {
+  margin-top: 0;
+}
+
+
+/* =========================================================
+   MOBILE IPHONE
+   ========================================================= */
+
+@media (max-width: 520px) {
+
+  [data-view="settings"].active {
+    gap: 18px;
+  }
+
+  #uploadBatches {
+    margin-bottom: 18px;
+  }
+
+  #addBatchBtn {
+    margin-bottom: 14px;
+  }
+
+  #submitUploadsBtn {
+    margin-bottom: 18px;
+  }
+
+  .stack {
+    gap: 16px;
+  }
+}
