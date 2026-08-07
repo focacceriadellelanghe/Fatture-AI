@@ -283,3 +283,48 @@
     gap: 16px;
   }
 }
+/* ===== FIX FATTURE MULTIPAGINA iPhone ===== */
+
+.file-preview {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.file-preview-main {
+  min-width: 0;
+  flex: 1 1 auto;
+  display: grid;
+  gap: 2px;
+}
+
+.file-preview-main strong {
+  font-size: .76rem;
+  color: var(--gold2);
+}
+
+.file-preview-name {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--text);
+}
+
+.file-preview-size {
+  flex: 0 0 auto;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.file-remove {
+  flex: 0 0 auto;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  font-size: 1.25rem;
+  line-height: 1;
+}
