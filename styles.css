@@ -476,3 +476,26 @@ section[data-view="settings"] #logoutBtn{
     gap:12px;
   }
 }
+
+/* ===== FIX DEFINITIVO DATA CARICAMENTO - iPhone Safari ===== */
+
+#uploadBatches .batch-date {
+  -webkit-appearance: none !important;
+  appearance: none !important;
+
+  display: block !important;
+
+  width: -webkit-fill-available !important;
+  inline-size: -webkit-fill-available !important;
+
+  min-width: 0 !important;
+  max-width: 100% !important;
+
+  box-sizing: border-box !important;
+  overflow: hidden !important;
+}
+
+#uploadBatches .batch-date::-webkit-date-and-time-value {
+  min-width: 0 !important;
+  text-align: left;
+}
