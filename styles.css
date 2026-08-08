@@ -5,326 +5,241 @@
 @media(min-width:720px){.status-grid{grid-template-columns:repeat(4,1fr)}.main-content{padding-top:28px}.price-modal-card{height:min(90dvh,850px)}}
 @media(max-width:520px){.main-content{padding-left:12px;padding-right:12px}.form-grid{grid-template-columns:1fr}.search-row{grid-template-columns:1fr}.drawer-footer{flex-direction:column}.row-edit{grid-template-columns:1fr}.price-modal-card{width:100%;height:100dvh;max-height:100dvh;border:0;border-radius:0}.price-modal-header{padding-top:calc(10px + env(safe-area-inset-top))}.chart-wrap{height:210px}}
 .row-state{display:flex;flex-direction:column;align-items:flex-end;gap:6px}.review-summary{position:sticky;top:0;z-index:1;margin:0 0 12px;background:rgba(11,11,12,.96);padding:8px 0}.review-summary .mini-kpi{text-align:center}
-/* ===== HOTFIX iPhone layout / spacing ===== */
 
-/* Evita overflow orizzontali nei contenitori */
-.upload-batch,
-.panel,
-.list-card,
-.status-card,
-.search-row,
-.form-grid,
-.field {
-  min-width: 0;
+
+/* ===== V2.1.4 - Revisione fattura mobile/minimal ===== */
+
+/* La revisione scorre come una pagina unica: niente header/footer fissi. */
+#reviewDrawer .drawer-card{
+  display:block !important;
+  overflow-y:auto !important;
+  -webkit-overflow-scrolling:touch;
+  overscroll-behavior:contain;
 }
 
-.form-grid > .field,
-.search-row > * {
-  min-width: 0;
+#reviewDrawer .drawer-header{
+  position:static !important;
 }
 
-/* Input sempre contenuti dentro il box */
-.batch-date,
-.field input,
-.field select,
-.search-row input,
-.search-row select,
-.row-edit input,
-.row-edit select {
-  width: 100%;
-  max-width: 100%;
-  min-width: 0;
+#reviewDrawer .drawer-body{
+  overflow:visible !important;
+  min-height:auto !important;
+  padding:14px 14px calc(30px + env(safe-area-inset-bottom)) !important;
 }
 
-/* Safari iPhone: il date input tende a “scappare” */
-.field input[type="date"],
-.batch-date {
-  display: block;
-  -webkit-appearance: none;
-  appearance: none;
+/* I vecchi comandi fissi vengono sostituiti dai comandi in fondo al contenuto. */
+#reviewDrawer .drawer-footer{
+  display:none !important;
 }
 
-/* Lista prezzi: mantieni il prezzo dentro la card */
-.list-card {
-  width: 100%;
-  justify-content: space-between;
-  align-items: center;
-  gap: 14px;
+/* Sicurezza contro la vecchia regola sticky. */
+#reviewDrawer .review-summary,
+#reviewDrawer .review-summary-v2{
+  position:static !important;
+  top:auto !important;
 }
 
-.list-main {
-  min-width: 0;
-  flex: 1 1 auto;
+.review-summary-v2{
+  display:grid;
+  grid-template-columns:repeat(4,minmax(0,1fr));
+  gap:8px;
+  margin:0 0 14px;
+  padding:0;
+  background:transparent;
 }
 
-.price-current {
-  flex: 0 0 auto;
-  min-width: 84px;
-  margin-left: auto;
-  text-align: right;
+.review-count{
+  min-width:0;
+  padding:10px 6px;
+  border-radius:14px;
+  background:#202024;
+  text-align:center;
 }
 
-/* Più respiro nella sezione prezzi */
-#priceList {
-  gap: 14px;
+.review-count small{
+  display:block;
+  margin-bottom:5px;
+  color:var(--muted);
+  font-size:.62rem;
+  line-height:1.1;
 }
 
-[data-view="prices"] .search-row {
-  margin-bottom: 18px;
-  gap: 12px;
+.review-count strong{
+  font-size:1.15rem;
 }
 
-/* Più respiro nella sezione impostazioni */
-[data-view="settings"] {
-  display: grid;
-  gap: 16px;
+.review-row-v2{
+  padding:15px;
+  margin-bottom:14px;
 }
 
-[data-view="settings"] .panel {
-  display: grid;
-  gap: 14px;
-  padding: 20px;
+.review-row-head-v2{
+  align-items:flex-start;
+  margin-bottom:12px;
 }
 
-[data-view="settings"] .panel h2 {
-  margin: 0 0 4px;
+.review-row-heading-main{
+  flex:1 1 auto;
+  min-width:0;
 }
 
-[data-view="settings"] .field {
-  gap: 8px;
+.review-row-v2 .row-desc{
+  font-size:1rem;
+  line-height:1.18;
 }
 
-.setting-row {
-  padding: 8px 0 14px;
-  margin-bottom: 2px;
+.review-row-v2 .row-state{
+  flex:0 0 auto;
 }
 
-/* Più aria generale tra form e contenuti */
-.form-grid {
-  gap: 14px;
+.review-section-title{
+  margin:15px 1px 8px;
+  color:var(--gold2);
+  font-size:.64rem;
+  font-weight:850;
+  letter-spacing:.12em;
+  text-transform:uppercase;
 }
 
-.field {
-  gap: 8px;
+.review-field-grid{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:9px;
 }
 
-.field > span {
-  line-height: 1.35;
+.review-field{
+  min-width:0;
+  padding:10px 11px;
+  border:1px solid #2d2c31;
+  border-radius:15px;
+  background:#202024;
 }
 
-.primary-button,
-.secondary-button,
-.danger-button {
-  min-height: 52px;
+.review-field.wide{
+  grid-column:1 / -1;
 }
 
-/* Mobile fine-tuning */
-@media (max-width: 520px) {
-  .main-content {
-    padding: 18px 14px 34px;
+.review-field > span{
+  display:block;
+  margin-bottom:6px;
+  color:var(--muted);
+  font-size:.66rem;
+  line-height:1.15;
+}
+
+.review-field input,
+.review-field select{
+  width:100%;
+  min-width:0;
+  padding:0;
+  border:0;
+  outline:0;
+  background:transparent;
+  color:var(--text);
+  font:inherit;
+  font-size:.98rem;
+  font-weight:750;
+}
+
+.review-field input:focus,
+.review-field select:focus{
+  outline:none;
+}
+
+.review-field input:disabled,
+.review-field select:disabled{
+  opacity:.68;
+}
+
+.review-input-combo{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) 86px;
+  gap:8px;
+  align-items:center;
+}
+
+.review-input-combo.review-money{
+  grid-template-columns:minmax(0,1fr) 28px;
+}
+
+.review-input-combo > span{
+  color:var(--muted);
+  text-align:right;
+  font-size:.92rem;
+}
+
+.review-input-combo select{
+  padding-left:8px;
+  border-left:1px solid #3a393e;
+}
+
+.review-field.calculated{
+  border-color:#614720;
+  background:#211d16;
+}
+
+.review-field.calculated > span{
+  color:#d6ad68;
+}
+
+.review-field.calculated .tracked-price{
+  color:var(--gold2);
+  font-size:1.22rem;
+  font-weight:900;
+}
+
+.tracked-price-note{
+  display:block;
+  margin-top:7px;
+  color:#a9906a;
+  font-size:.64rem;
+  line-height:1.3;
+}
+
+.row-new-ingredient{
+  display:block;
+  width:100%;
+  margin-top:9px;
+  padding:8px 2px 5px;
+  text-align:left;
+  color:var(--gold2);
+  font-weight:800;
+}
+
+.review-row-actions-v2{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:9px;
+  margin-top:8px;
+}
+
+.review-row-actions-v2 button{
+  width:100%;
+}
+
+.review-final-actions{
+  display:grid;
+  gap:10px;
+  margin:22px 0 4px;
+  padding-bottom:env(safe-area-inset-bottom);
+}
+
+.review-final-actions button{
+  width:100%;
+  padding-top:15px;
+  padding-bottom:15px;
+}
+
+@media (max-width:380px){
+  .review-summary-v2{
+    grid-template-columns:repeat(2,minmax(0,1fr));
   }
 
-  .panel,
-  .list-card {
-    padding: 18px 16px;
+  .review-field-grid{
+    grid-template-columns:1fr;
   }
 
-  .search-row {
-    grid-template-columns: 1fr;
-    gap: 12px;
+  .review-field.wide{
+    grid-column:auto;
   }
-
-  .price-current {
-    min-width: 88px;
-  }
-}
-/* ===== V2.1.3 - Spaziatura globale pannelli e fix viste ===== */
-
-/* Le viste non attive devono sempre restare nascoste */
-.view {
-  display: none;
-}
-
-.view.active {
-  display: block;
-}
-
-/* Impostazioni usa la griglia SOLO quando è la vista attiva */
-[data-view="settings"].active {
-  display: grid;
-  gap: 20px;
-}
-
-/* Sicurezza: impedisce a Impostazioni di apparire nelle altre sezioni */
-[data-view="settings"]:not(.active) {
-  display: none !important;
-}
-
-
-/* =========================================================
-   SPAZIATURA TRA I BOX PRINCIPALI
-   ========================================================= */
-
-/* Tutti i contenitori verticali */
-.stack {
-  gap: 16px;
-}
-
-/* I pannelli grandi non devono mai essere attaccati */
-[data-view="settings"] > .panel + .panel {
-  margin-top: 4px;
-}
-
-/* Carica fatture: spazio tra scheda fattura e comandi */
-#uploadBatches {
-  margin-bottom: 18px;
-}
-
-/* Se ci sono più fatture, separale chiaramente */
-#uploadBatches .upload-batch + .upload-batch {
-  margin-top: 18px;
-}
-
-/* Pulsanti principali della pagina Carica */
-#addBatchBtn {
-  margin-top: 0;
-  margin-bottom: 14px;
-}
-
-#submitUploadsBtn {
-  margin-top: 0;
-  margin-bottom: 18px;
-}
-
-/* Eventuale box di avanzamento */
-#uploadProgress:not(.hidden) {
-  margin-top: 18px;
-}
-
-
-/* =========================================================
-   SPAZI INTERNI AI PANNELLI
-   ========================================================= */
-
-.panel {
-  margin-bottom: 0;
-}
-
-/* Titoli dei pannelli */
-.panel > h2 {
-  margin-top: 0;
-  margin-bottom: 18px;
-}
-
-/* Campi consecutivi */
-.panel .field + .field {
-  margin-top: 12px;
-}
-
-/* Pulsante dopo i campi */
-.panel .field + .primary-button,
-.panel .setting-row + .field {
-  margin-top: 10px;
-}
-
-/* Account */
-.key-values {
-  margin-top: 12px;
-  margin-bottom: 22px;
-}
-
-/* Versione */
-[data-view="settings"] .panel:last-child p {
-  margin-top: 12px;
-  margin-bottom: 0;
-}
-
-
-/* =========================================================
-   LISTE / PREZZI / NOTIFICHE
-   ========================================================= */
-
-#priceList,
-#invoiceList,
-#notificationList,
-#recentInvoices {
-  gap: 16px;
-}
-
-/* Ogni card resta visivamente separata */
-.list-card + .list-card {
-  margin-top: 0;
-}
-
-
-/* =========================================================
-   MOBILE IPHONE
-   ========================================================= */
-
-@media (max-width: 520px) {
-
-  [data-view="settings"].active {
-    gap: 18px;
-  }
-
-  #uploadBatches {
-    margin-bottom: 18px;
-  }
-
-  #addBatchBtn {
-    margin-bottom: 14px;
-  }
-
-  #submitUploadsBtn {
-    margin-bottom: 18px;
-  }
-
-  .stack {
-    gap: 16px;
-  }
-}
-/* ===== FIX FATTURE MULTIPAGINA iPhone ===== */
-
-.file-preview {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.file-preview-main {
-  min-width: 0;
-  flex: 1 1 auto;
-  display: grid;
-  gap: 2px;
-}
-
-.file-preview-main strong {
-  font-size: .76rem;
-  color: var(--gold2);
-}
-
-.file-preview-name {
-  min-width: 0;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  color: var(--text);
-}
-
-.file-preview-size {
-  flex: 0 0 auto;
-  color: var(--muted);
-  white-space: nowrap;
-}
-
-.file-remove {
-  flex: 0 0 auto;
-  width: 32px;
-  height: 32px;
-  padding: 0;
-  display: grid;
-  place-items: center;
-  border-radius: 10px;
-  font-size: 1.25rem;
-  line-height: 1;
 }
